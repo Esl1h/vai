@@ -23,23 +23,37 @@ pub:
 	stall_timeout_secs int = 30
 }
 
-fn curl_args(url string, headers map[string]string, body string, connect_timeout_secs int) []string {
+fn curl_args(url string, headers map[string]string, connect_timeout_secs int) []string {
 	mut args := ['-sS', '-N', '-X', 'POST', '--connect-timeout', '${connect_timeout_secs}']
 	for k, v in headers {
 		args << '-H'
 		args << '${k}: ${v}'
 	}
-	args << '-d'
-	args << body
+	// The body goes through curl's stdin (`@-`), not argv: Linux caps a
+	// single argument at 128 KB, and a long prompt (a whole file, a
+	// journal window) blew past it with the misleading error "curl
+	// produced no output" because execve itself failed.
+	args << '--data-binary'
+	args << '@-'
 	args << url
 	return args
+}
+
+// feed_body writes the request body to curl's stdin and closes it, so
+// curl sees EOF and sends the request. os.Process has no stdin_close;
+// closing the pipe's write end by hand and marking it -1 keeps
+// Process.close() from closing it twice.
+fn feed_body(mut p os.Process, body string) {
+	p.stdin_write(body)
+	os.fd_close(p.stdio_fd[0])
+	p.stdio_fd[0] = -1
 }
 
 // post_json runs curl to completion and returns the full response. The
 // status code rides along after a newline curl itself appends
 // (`-w '\n%{http_code}'`), so this needs no separate header-dump file.
 pub fn (t CurlTransport) post_json(url string, headers map[string]string, body string) !HttpResponse {
-	mut args := curl_args(url, headers, body, t.connect_timeout_secs)
+	mut args := curl_args(url, headers, t.connect_timeout_secs)
 	args << '--max-time'
 	args << '${t.max_time_secs}'
 	args << '-w'
@@ -49,6 +63,7 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 	p.set_args(args)
 	p.set_redirect_stdio()
 	p.run()
+	feed_body(mut p, body)
 	out := p.stdout_slurp()
 	err_out := p.stderr_slurp()
 	p.wait()
@@ -78,7 +93,7 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 // everything), so the line splitting and partial-line buffering across
 // reads happens here, not in the stdlib.
 pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body string) !chan RawSseEvent {
-	mut args := curl_args(url, headers, body, t.connect_timeout_secs)
+	mut args := curl_args(url, headers, t.connect_timeout_secs)
 	args << '--speed-limit'
 	args << '1'
 	args << '--speed-time'
@@ -87,6 +102,7 @@ pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body
 	p.set_args(args)
 	p.set_redirect_stdio()
 	p.run()
+	feed_body(mut p, body)
 
 	ch := chan RawSseEvent{ cap: 32 }
 	spawn pump_curl_stdout(mut p, ch)
