@@ -15,6 +15,9 @@ pub fn encode_request(req vai.Request) string {
 	mut m := map[string]json2.Any{}
 	m['model'] = req.model
 	m['max_tokens'] = req.max_tokens
+	// Always sent: 1.0 is the server-side default and there is no way to
+	// distinguish "explicitly 1.0" from the struct default to omit it.
+	m['temperature'] = req.temperature
 	m['messages'] = encode_messages(req)
 	if req.tools.len > 0 {
 		m['tools'] = encode_tools(req.tools)
