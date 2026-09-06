@@ -108,8 +108,8 @@ fn decode_usage(obj map[string]json2.Any) vai.Usage {
 
 // decode_stream_event translates one raw SSE frame from the Messages API
 // streaming format into vai's provider-agnostic StreamEvent. Returns none
-// for frames a caller has no use for (ping, content_block_start/stop,
-// message_start) rather than inventing a placeholder event for them.
+// for frames a caller has no use for (ping, content_block_start/stop)
+// rather than inventing a placeholder event for them.
 pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 	val := json2.decode[json2.Any](raw.data) or { return none }
 	if val !is map[string]json2.Any {
@@ -121,6 +121,24 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 	match type_val.str() {
 		'content_block_delta' {
 			return decode_content_block_delta(obj)
+		}
+		'message_start' {
+			// input_tokens and the cache counts only ever appear here;
+			// message_delta's usage carries output_tokens (cumulative) and,
+			// in the normal case, nothing else. Dropping this event made
+			// streamed cost accounting input-blind.
+			msg_val := obj['message'] or { return none }
+			if msg_val !is map[string]json2.Any {
+				return none
+			}
+			usage_val := msg_val.as_map()['usage'] or { return none }
+			if usage_val !is map[string]json2.Any {
+				return none
+			}
+			return vai.StreamEvent{
+				kind: .usage
+				usage: decode_usage(usage_val.as_map())
+			}
 		}
 		'message_delta' {
 			mut usage := vai.Usage{}

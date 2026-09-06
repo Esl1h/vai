@@ -140,6 +140,12 @@ pub enum EventKind {
 	error
 }
 
+// StreamEvent is one provider-agnostic streaming event. A stream can carry
+// more than one usage event, each a cumulative snapshot with only the
+// fields that provider sends at that point (Anthropic: input and cache
+// counts on message_start, output_tokens on message_delta). To price a
+// stream, keep the last non-zero value of each Usage field across every
+// usage event, not just the last event.
 pub struct StreamEvent {
 pub:
 	kind  EventKind
