@@ -16,6 +16,7 @@ pub fn (t NativeTransport) post_json(url string, headers map[string]string, body
 	return HttpResponse{
 		status: resp.status_code
 		body: resp.body
+		retry_after: resp.header.get(.retry_after) or { '' }
 	}
 }
 

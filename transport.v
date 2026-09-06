@@ -1,12 +1,15 @@
 module vai
 
 // HttpResponse is deliberately smaller than what an HTTP client normally
-// returns: callers only ever need the status and the body to build a
-// Response or an RpcError-style failure out of it.
+// returns: callers only ever need the status, the body, and (for retry)
+// the Retry-After header to build a Response or a retry decision out of.
 pub struct HttpResponse {
 pub:
 	status int
 	body   string
+	// retry_after is the raw Retry-After header value, empty if the
+	// response didn't send one. Feed it to parse_retry_after.
+	retry_after string
 }
 
 // Transport is the one seam vai has for actually reaching a provider.
