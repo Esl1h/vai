@@ -97,6 +97,11 @@ fn pump_curl_stdout(mut p os.Process, ch chan RawSseEvent) {
 	mut parser := SseParser{}
 	mut buf := ''
 	for {
+		// Liveness is sampled before the read on purpose: if curl writes
+		// its last bytes and exits between the two calls, the read still
+		// drains them and the loop comes round once more. Sampling it
+		// after an empty read would drop exactly that tail.
+		alive := p.is_alive()
 		chunk := p.stdout_read()
 		if chunk != '' {
 			buf += chunk
@@ -110,7 +115,7 @@ fn pump_curl_stdout(mut p os.Process, ch chan RawSseEvent) {
 			}
 			continue
 		}
-		if !p.is_alive() {
+		if !alive {
 			break
 		}
 		time.sleep(10 * time.millisecond)
