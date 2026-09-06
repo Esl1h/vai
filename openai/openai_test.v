@@ -44,6 +44,19 @@ fn test_decode_response_text() {
 	}
 }
 
+fn test_decode_response_ignores_non_numeric_usage_field() {
+	// A malformed usage field must not be silently coerced into a real-
+	// looking 0 via Any.f64()'s default: a sibling field that *is*
+	// well-formed still decodes normally.
+	raw := '{"id":"chatcmpl-2","model":"llama3","choices":[],"usage":{"prompt_tokens":"lots","completion_tokens":7}}'
+	resp := decode_response(raw) or {
+		assert false, err.msg()
+		return
+	}
+	assert resp.usage.input_tokens == 0
+	assert resp.usage.output_tokens == 7
+}
+
 fn test_decode_stream_event_content_delta() {
 	ev := vai.RawSseEvent{
 		data: '{"id":"1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}'
