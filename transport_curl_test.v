@@ -15,6 +15,18 @@ fn (h SseHandler) handle(_ http.Request) http.Response {
 	return r
 }
 
+// BodyLenHandler answers with the request body's length, to prove a body
+// of any size reaches the server intact.
+struct BodyLenHandler {}
+
+fn (h BodyLenHandler) handle(req http.Request) http.Response {
+	mut r := http.Response{
+		body: '{"len":${req.data.len}}'
+	}
+	r.set_status(.ok)
+	return r
+}
+
 fn start_sse_server(addr string) &http.Server {
 	mut server := &http.Server{
 		addr: addr
@@ -39,6 +51,30 @@ fn test_curl_transport_post_json() {
 	}
 	assert resp.status == 200
 	assert resp.body.contains('message_start')
+}
+
+fn test_curl_transport_post_json_body_larger_than_one_argv() {
+	// Linux caps one argv string at 128 KB; the body has to go through
+	// curl's stdin for anything bigger (a whole file, a journal window).
+	mut server := &http.Server{
+		addr: '127.0.0.1:18353'
+		handler: BodyLenHandler{}
+		show_startup_message: false
+	}
+	spawn server.listen_and_serve()
+	server.wait_till_running() or { panic(err) }
+	defer {
+		server.close()
+	}
+
+	body := '{"x":"' + 'a'.repeat(200_000) + '"}'
+	t := CurlTransport{}
+	resp := t.post_json('http://127.0.0.1:18353/', {}, body) or {
+		assert false, err.msg()
+		return
+	}
+	assert resp.status == 200
+	assert resp.body == '{"len":${body.len}}', resp.body
 }
 
 fn test_curl_transport_post_stream() {
