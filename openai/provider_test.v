@@ -128,7 +128,7 @@ fn test_provider_complete_sets_latency_ms() {
 
 // A transport-level failure (here: nothing listens on 127.0.0.1:1, so
 // curl can never even connect) must be retried like a retryable HTTP
-// status, and must never surface as "HTTP 0" — CurlTransport.post_json
+// status, and must never surface as "HTTP 0", CurlTransport.post_json
 // used to return status: 0 as if it were a real (if useless) response
 // instead of an error, which made this failure mode skip retry entirely.
 fn test_provider_complete_retries_transport_failure() {

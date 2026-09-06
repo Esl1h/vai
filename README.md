@@ -16,17 +16,17 @@ v install https://github.com/Esl1h/vai
 - **Cost accounting** (`cost.v`): a real, sourced pricing table for Anthropic's current models (Opus 5, Sonnet 5, Haiku 4.5, Claude Fable 5.1), all four token categories including cache write/read, and a `PriceBook` for adding or overriding prices without forking the module.
 - **Retry** (`retry.v`): which HTTP statuses are worth retrying, and exponential backoff with jitter.
 - **SSE framing** (`sse.v`): a provider-agnostic incremental parser (`SseParser.feed(line)`), because a transport reads a stream one line at a time, not as one complete body.
-- **`local`** (`local/`): reads Claude Code's own session transcripts (`~/.claude/projects/**/*.jsonl`) for token usage, model, and timing — read defensively, since the format is undocumented and internal to the CLI.
+- **`local`** (`local/`): reads Claude Code's own session transcripts (`~/.claude/projects/**/*.jsonl`) for token usage, model, and timing, read defensively, since the format is undocumented and internal to the CLI.
 - **`anthropic`** (`anthropic/`) and **`openai`** (`openai/`): request encoding, response decoding, and stream-event decoding for each provider's actual wire format. Each is tested against realistic fixtures, not live calls.
 - **Transport** (`transport.v`, `transport_http.v`, `transport_curl.v`): the `Transport` interface, `NativeTransport` (`net.http`, non-streaming only), and `CurlTransport`, which shells out to `curl` for both request kinds and is what makes streaming work at all, since `net.http` has none. Handles the partial-line buffering across non-blocking reads itself, since `os.Process` doesn't give you a line-buffered read.
-- **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` with retry (rate limiting, a momentary server failure, Anthropic's 529, respecting the server's own `Retry-After` header), and `stream(req) !chan vai.StreamEvent`. Both tested against a local mock server — `complete()`'s retry path with a fake 429-then-succeed handler, `stream()` end-to-end through a real `curl` subprocess parsing a real SSE body.
+- **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` with retry (rate limiting, a momentary server failure, Anthropic's 529, respecting the server's own `Retry-After` header), and `stream(req) !chan vai.StreamEvent`. Both tested against a local mock server, `complete()`'s retry path with a fake 429-then-succeed handler, `stream()` end-to-end through a real `curl` subprocess parsing a real SSE body.
 
 ## What's not here yet
 
 - **`Provider.count_tokens()`** and **`Provider.models()`**. Nothing calls either endpoint yet.
 - **`stream()` doesn't see the HTTP status of the request.** `Transport.post_stream` returns only a channel, no status code, so a non-2xx error response (e.g. a 429 JSON body instead of an event stream) gets its body fed to the SSE parser like any other line and most likely produces zero events rather than a clear error. `complete()` doesn't have this problem. Fixing it needs a `Transport` interface change that hasn't been made.
 - **`stream()` doesn't retry.** `complete()` does; a streaming call that fails before or during the stream is the caller's problem to retry today.
-- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server` — this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `complete()` and `stream()` are wired and tested against a mock, but neither has been run against the real API yet.
+- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server`, this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `complete()` and `stream()` are wired and tested against a mock, but neither has been run against the real API yet.
 
 ## Usage (what works today)
 
@@ -46,7 +46,7 @@ println(resp.content)
 println(vai.cost(resp.model, resp.usage).total())
 ```
 
-Same shape for any OpenAI-compatible endpoint — Ollama, OpenRouter, RouteLLM/Abacus, LM Studio — just point `base_url` at it:
+Same shape for any OpenAI-compatible endpoint, Ollama, OpenRouter, RouteLLM/Abacus, LM Studio, just point `base_url` at it:
 
 ```v
 import vai
@@ -62,7 +62,7 @@ resp := p.complete(vai.Request{
 })!
 ```
 
-Streaming needs `CurlTransport` explicitly — the default is `NativeTransport`, which can't stream:
+Streaming needs `CurlTransport` explicitly, the default is `NativeTransport`, which can't stream:
 
 ```v
 import vai
@@ -104,11 +104,11 @@ make test
 make fmt
 ```
 
-`v test .` is slow once `net.http` is in the dependency graph (dozens of seconds) — that's normal.
+`v test .` is slow once `net.http` is in the dependency graph (dozens of seconds), that's normal.
 
 ## Scope
 
-No tokenizer of its own: use `usage` from a response, or a provider's token-counting endpoint once `Provider.count_tokens()` exists. No abstraction that flattens Anthropic and OpenAI's real differences (thinking blocks, cache control, tool use) into a lowest common denominator — each provider submodule encodes and decodes its own shape. No agent loop, memory, or RAG: that's application scope, not a client library's.
+No tokenizer of its own: use `usage` from a response, or a provider's token-counting endpoint once `Provider.count_tokens()` exists. No abstraction that flattens Anthropic and OpenAI's real differences (thinking blocks, cache control, tool use) into a lowest common denominator, each provider submodule encodes and decodes its own shape. No agent loop, memory, or RAG: that's application scope, not a client library's.
 
 ## License
 

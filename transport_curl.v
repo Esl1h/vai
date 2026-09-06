@@ -57,7 +57,7 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 	idx := out.last_index('\n') or { return error('curl produced no output') }
 	status := out[idx + 1..].trim_space().int()
 	// curl still writes the -w format string on total connection failure
-	// (timeout, refused, DNS), just with %{http_code} as "000" — that is
+	// (timeout, refused, DNS), just with %{http_code} as "000", that is
 	// not a valid HttpResponse to hand back as if a server had answered,
 	// it is the transport itself failing, which the caller needs as an
 	// error to retry on, not a status code to inspect.
@@ -75,7 +75,7 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 // and every buffered byte has been consumed. os.Process has no
 // line-buffered read in this V version, only stdout_read() (whatever
 // bytes are currently available) and stdout_slurp() (blocks for
-// everything) — so the line splitting and partial-line buffering across
+// everything), so the line splitting and partial-line buffering across
 // reads happens here, not in the stdlib.
 pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body string) !chan RawSseEvent {
 	mut args := curl_args(url, headers, body, t.connect_timeout_secs)
@@ -117,7 +117,7 @@ fn pump_curl_stdout(mut p os.Process, ch chan RawSseEvent) {
 	}
 
 	// A line with no trailing newline, and the blank line that ends the
-	// last event, can both be missing if the connection just closed —
+	// last event, can both be missing if the connection just closed ,
 	// flush whatever is left through the parser so nothing is dropped.
 	if buf != '' {
 		if ev := parser.feed(buf.trim_string_right('\r')) {

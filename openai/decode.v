@@ -56,7 +56,7 @@ pub fn decode_response(raw string) !vai.Response {
 // its own cache fields on top of this shape isn't covered yet.
 //
 // Only a field that is actually a number is accepted. Any.f64() itself
-// never fails — it silently returns 0 for a non-numeric value — which
+// never fails, it silently returns 0 for a non-numeric value, which
 // would otherwise make a malformed usage field indistinguishable from a
 // real zero. Reporting 0 tokens when the true count is unknown is worse
 // than leaving the field at its default: it reads as "this request was

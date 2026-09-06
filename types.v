@@ -127,7 +127,7 @@ pub:
 	stop_reason string
 	// latency_ms is wall-clock time for the whole call, set by
 	// Provider.complete(). There is no ttft_ms here: complete() never
-	// streams, so "time to first token" has nothing to measure — see
+	// streams, so "time to first token" has nothing to measure, see
 	// StreamEvent.at_ms for that, on the streaming path.
 	latency_ms i64
 }

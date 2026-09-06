@@ -17,7 +17,7 @@ pub:
 
 // complete sends req and returns the full response, retrying on a
 // retryable HTTP status *and* on a transport-level failure (connection
-// refused, DNS failure, a curl timeout) up to retry.max_attempts times —
+// refused, DNS failure, a curl timeout) up to retry.max_attempts times ,
 // a transport error never reaching an HTTP response is exactly the kind
 // of transient failure retry exists for, not a reason to give up on the
 // first attempt. Respects the server's own Retry-After header when one
@@ -70,7 +70,7 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 // underlying transport's raw SSE channel closes.
 //
 // Known gap: unlike complete(), stream does not retry and does not see
-// the HTTP status of the request at all — Transport.post_stream returns
+// the HTTP status of the request at all, Transport.post_stream returns
 // only a channel, no status code. A non-2xx error response gets its body
 // fed to the SSE parser like any other line and most likely produces zero
 // events rather than a clear error. Fixing this needs a Transport
@@ -94,7 +94,7 @@ pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
 }
 
 // pump_openai_events stamps every event with at_ms, the time since the
-// stream started — see anthropic.pump_anthropic_events for why.
+// stream started, see anthropic.pump_anthropic_events for why.
 fn pump_openai_events(raw_ch chan vai.RawSseEvent, out chan vai.StreamEvent) {
 	sw := time.new_stopwatch()
 	for {

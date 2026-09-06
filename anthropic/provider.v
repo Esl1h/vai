@@ -16,7 +16,7 @@ pub:
 // complete sends req and returns the full response, retrying on a
 // retryable HTTP status (rate limiting, a momentary server failure, 529
 // overloaded) *and* on a transport-level failure (connection refused,
-// DNS failure, a curl timeout) up to retry.max_attempts times — a
+// DNS failure, a curl timeout) up to retry.max_attempts times, a
 // transport error never reaching an HTTP response is exactly the kind of
 // transient failure retry exists for, not a reason to give up on the
 // first attempt. It respects the server's own Retry-After header when
@@ -68,7 +68,7 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 // underlying transport's raw SSE channel closes.
 //
 // Known gap: unlike complete(), stream does not retry and does not see
-// the HTTP status of the request at all — Transport.post_stream returns
+// the HTTP status of the request at all, Transport.post_stream returns
 // only a channel, no status code. If the server answers with a non-2xx
 // error instead of an event stream (e.g. a 429 JSON body), that body's
 // lines get fed to the SSE parser like any other line and most likely
