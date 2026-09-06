@@ -13,7 +13,7 @@ pub enum Role {
 	system
 }
 
-pub type Content = ImageContent | TextContent | Thinking | ToolResult | ToolUse
+pub type Content = ImageContent | RedactedThinking | TextContent | Thinking | ToolResult | ToolUse
 
 pub struct TextContent {
 pub:
@@ -43,6 +43,21 @@ pub:
 pub struct Thinking {
 pub:
 	text string
+	// signature is the opaque encrypted reasoning Anthropic returns on
+	// every thinking block. The API verifies it when a thinking block is
+	// passed back in multi-turn and tool-use conversations, so it must
+	// survive a decode/encode round trip untouched.
+	signature string
+}
+
+pub struct RedactedThinking {
+
+	// data is the opaque encrypted payload of a safety-redacted thinking
+	// block. Like Thinking.signature, it must be echoed back unchanged
+	// when continuing a conversation; dropping the block breaks the
+	// multi-turn protocol.
+pub:
+	data string
 }
 
 pub struct Message {
