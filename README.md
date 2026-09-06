@@ -24,6 +24,7 @@ v install https://github.com/Esl1h/vai
 ## What's not here yet
 
 - **`Provider.count_tokens()`** and **`Provider.models()`**. Nothing calls either endpoint yet.
+- **OpenAI-side tool use.** `tools` are sent, but `message.tool_calls` in the answer is not decoded yet: a tool-use reply arrives as empty content with `stop_reason: "tool_calls"`. Anthropic's `tool_use` blocks are decoded.
 - **`stream()` doesn't see the HTTP status of the request.** `Transport.post_stream` returns only a channel, no status code, so a non-2xx error response (e.g. a 429 JSON body instead of an event stream) gets its body fed to the SSE parser like any other line and most likely produces zero events rather than a clear error. `complete()` doesn't have this problem. Fixing it needs a `Transport` interface change that hasn't been made.
 - **`stream()` doesn't retry.** `complete()` does; a streaming call that fails before or during the stream is the caller's problem to retry today.
 - Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server`, this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `complete()` and `stream()` are wired and tested against a mock, but neither has been run against the real API yet.

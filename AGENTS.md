@@ -62,9 +62,17 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   statically `Any`, call `.as_map()`/`.as_array()` explicitly, don't
   index `v` directly.
 - Every bare JSON number decodes to `f64` (same finding as `vjsonrpc`).
-  Anthropic's usage fields, OpenAI's usage fields, and stream deltas all
-  need `int(v.f64())`, never `v.int()` (which only handles the `int`
-  variant and silently returns 0 for everything else).
+  Anthropic's usage fields, OpenAI's usage fields, and stream deltas are
+  read with an `is f64` check and `int(v)`. `v.int()` on an `f64` variant
+  does truncate on V 0.5.2 (1.5 becomes 1) and returns `int` min for a
+  value past 2^31, but it also returns 0 for a string, so it cannot tell
+  a malformed field from a real zero; that is why the variant check
+  exists, not because `.int()` ignores `f64`.
+- **`json2.Any.str()` on a `Null` is the text `null`**, and on a number
+  it is the formatted number. Reading a string field with `.str()` without
+  an `is string` check turned OpenAI's `"content": null` (tool_calls
+  answers, reasoning chunks) into a literal "null" text block. Check the
+  variant first; `decode_stream_event`/`decode_response` in `openai/` do.
 - `pub struct Foo { pub: ... }` fields are **read-only even from inside the
   same module**, building a struct up field-by-field (`sess.id = x`)
   needs `pub mut:`, not `pub:`. Preferred where possible: collect into
@@ -105,6 +113,11 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   several lines." `CurlTransport.post_stream`'s `pump_curl_stdout` buffers
   across calls and only ever hands the SSE parser a complete line, polling
   with a short `time.sleep` between empty reads while `p.is_alive()`.
+- **`CurlTransport` feeds the body through curl's stdin (`--data-binary
+  @-`), never argv.** Linux caps one argv string at 128 KB (`MAX_ARG_STRLEN`);
+  a bigger `-d body` made `execve` fail and surfaced as "curl produced no
+  output". `os.Process` has no `stdin_close`, so `feed_body` closes
+  `p.stdio_fd[0]` itself and marks it -1 so `Process.close()` skips it.
 - `curl -w '\n%{http_code}'` is what gives `CurlTransport.post_json` the
   status code without a separate header-dump file: curl appends it after
   the body, and the response is split on the *last* newline.
@@ -153,6 +166,11 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   channel), which hasn't been done. Don't paper over it with a heuristic
   (e.g. "first line doesn't look like SSE") inside a provider; fix the
   interface if this actually blocks a downstream tool.
+- **`NativeTransport` sets `read_timeout`/`write_timeout` on every
+  request (`timeout_secs`, default 300).** net.http's own default is 30 s
+  per socket read, and a non-streaming completion on a slow local model
+  sends nothing for longer than that, so the request timed out and
+  `complete()` then retried the same slow request five times.
 - **`NativeTransport.post_stream` always errors.** V's `net.http` has no
   streaming response support in this version; that was the single biggest
   risk called out before this module was written, and it's confirmed real,
@@ -173,11 +191,15 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   own `PriceBook` entries.
 - **`local.claude_sessions()` reads four `Usage` fields and ignores
   everything else** in `message.usage` (thinking-token breakdown, service
-  tier, per-iteration detail, `server_tool_use`), confirmed against real
-  session files on the machine this was built on, not guessed. The schema
-  is undocumented and internal to Claude Code; expect it to drift across
-  CLI versions without notice, and re-verify against a real
-  `~/.claude/projects/**/*.jsonl` file before trusting a schema change.
+  tier, per-iteration detail, `server_tool_use`). Claude Code writes one
+  line per content block of an assistant turn, each repeating the same
+  `message.id` and the same usage object (a real transcript here had 1562
+  usage lines for 924 distinct ids), so usage is counted once per
+  `message.id`; the first version summed every line and roughly doubled
+  every total. The schema is undocumented and internal to Claude Code;
+  expect it to drift across CLI versions without notice, and re-verify
+  against a real `~/.claude/projects/**/*.jsonl` file before trusting a
+  schema change.
 
 ## Not yet implemented, do not assume these exist
 
@@ -190,8 +212,18 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   block therefore still cannot be echoed back; fix `StreamEvent` first
   if a downstream tool needs streaming tool-use loops.
 
+- **OpenAI `tool_calls` decoding.** `openai.encode_request` sends
+  `tools`, but `decode_response` never reads `message.tool_calls`, so a
+  tool-use answer comes back as empty content with
+  `stop_reason: "tool_calls"`; `vai.ToolUse` only ever comes back from the
+  Anthropic provider today.
 - **`Provider.models()`, `Provider.count_tokens()`**. Neither endpoint is
   called from anywhere yet, nothing downstream has asked for them.
+- **Usage events on a stream are cumulative snapshots, one per provider
+  event that carries usage** (Anthropic: `message_start` with input and
+  cache counts, `message_delta` with `output_tokens`). A caller pricing a
+  stream keeps the last non-zero value per field; `vai` does not merge
+  them into one event yet.
 - **Streaming that surfaces a pre-stream HTTP error status.** See the
   `Provider.stream()` gap above. `stream()` works correctly for the happy
   path (verified against a real subprocess) but gives no clear signal when
