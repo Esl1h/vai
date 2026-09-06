@@ -108,6 +108,14 @@ subsequent `v test .` until this was cleared — the code itself was fine.
 - `curl -w '\n%{http_code}'` is what gives `CurlTransport.post_json` the
   status code without a separate header-dump file: curl appends it after
   the body, and the response is split on the *last* newline.
+- **When vai is VPM-installed on this machine (`~/.vmodules/vai`, which
+  `toklen` needs), the `anthropic`/`openai`/`local` test files compile
+  their `import vai` against that installed copy, not this working
+  tree** — same resolution quirk as toklen's sibling-`vai` bug, other
+  manifestation. The two copies going out of sync makes submodule tests
+  fail with "no field named ..." / "no variant ..." on changes that are
+  right here. To test root-module changes: temporarily move
+  `~/.vmodules/vai` out of the way, or re-`v install` first.
 
 ## Design decisions worth knowing before changing scope
 
@@ -172,6 +180,15 @@ subsequent `v test .` until this was cleared — the code itself was fine.
   `~/.claude/projects/**/*.jsonl` file before trusting a schema change.
 
 ## Not yet implemented — do not assume these exist
+
+- **Thinking-block signature in `stream()`**: `complete()`'s decode/encode
+  round-trips `Thinking.signature` and `RedactedThinking.data` (required
+  for multi-turn tool use; the API verifies them), but the streaming path
+  cannot yet: Anthropic delivers the signature as a `signature_delta`
+  inside a `content_block_delta` event, `StreamEvent` has no field to
+  carry it, and `decode_stream_event` drops it. A *streamed* thinking
+  block therefore still cannot be echoed back; fix `StreamEvent` first
+  if a downstream tool needs streaming tool-use loops.
 
 - **`Provider.models()`, `Provider.count_tokens()`**. Neither endpoint is
   called from anywhere yet — nothing downstream has asked for them.
