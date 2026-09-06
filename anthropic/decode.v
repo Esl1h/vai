@@ -54,6 +54,12 @@ fn decode_content_blocks(v json2.Any) []vai.Content {
 			'thinking' {
 				out << vai.Content(vai.Thinking{
 					text: (obj['thinking'] or { json2.Any('') }).str()
+					signature: (obj['signature'] or { json2.Any('') }).str()
+				})
+			}
+			'redacted_thinking' {
+				out << vai.Content(vai.RedactedThinking{
+					data: (obj['data'] or { json2.Any('') }).str()
 				})
 			}
 			'tool_use' {
