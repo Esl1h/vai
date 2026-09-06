@@ -64,6 +64,20 @@ fn test_decode_response_text() {
 	assert resp.usage.cache_read_tokens == 3
 }
 
+fn test_decode_response_ignores_non_numeric_usage_field() {
+	// A malformed usage field must not be silently coerced into a real-
+	// looking 0 via Any.f64()'s default: input_tokens stays unset (its
+	// own zero value either way here, but for the right reason), while a
+	// sibling field that *is* well-formed still decodes normally.
+	raw := '{"id":"msg_9","model":"claude-sonnet-5","content":[],"stop_reason":"end_turn","usage":{"input_tokens":"not a number","output_tokens":7}}'
+	resp := decode_response(raw) or {
+		assert false, err.msg()
+		return
+	}
+	assert resp.usage.input_tokens == 0
+	assert resp.usage.output_tokens == 7
+}
+
 fn test_decode_response_tool_use() {
 	raw := '{"id":"msg_2","model":"claude-sonnet-5","content":[{"type":"tool_use","id":"tu_1","name":"lookup","input":{"q":"weather"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}'
 	resp := decode_response(raw) or {

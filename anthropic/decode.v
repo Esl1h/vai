@@ -75,19 +75,33 @@ fn decode_content_blocks(v json2.Any) []vai.Content {
 	return out
 }
 
+// decode_usage only accepts a field that is actually a number. Any.f64()
+// itself never fails — it silently returns 0 for a non-numeric value —
+// which would otherwise make a malformed usage field indistinguishable
+// from a real zero. Reporting 0 tokens when the true count is unknown is
+// worse than leaving the field at its default: it reads as "this request
+// was free" rather than "this wasn't reported."
 fn decode_usage(obj map[string]json2.Any) vai.Usage {
 	mut u := vai.Usage{}
 	if v := obj['input_tokens'] {
-		u.input_tokens = int(v.f64())
+		if v is f64 {
+			u.input_tokens = int(v)
+		}
 	}
 	if v := obj['output_tokens'] {
-		u.output_tokens = int(v.f64())
+		if v is f64 {
+			u.output_tokens = int(v)
+		}
 	}
 	if v := obj['cache_creation_input_tokens'] {
-		u.cache_write_tokens = int(v.f64())
+		if v is f64 {
+			u.cache_write_tokens = int(v)
+		}
 	}
 	if v := obj['cache_read_input_tokens'] {
-		u.cache_read_tokens = int(v.f64())
+		if v is f64 {
+			u.cache_read_tokens = int(v)
+		}
 	}
 	return u
 }
