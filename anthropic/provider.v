@@ -14,10 +14,13 @@ pub:
 }
 
 // complete sends req and returns the full response, retrying on a
-// retryable status (rate limiting, a momentary server failure, 529
-// overloaded) up to retry.max_attempts times. It respects the server's
-// own Retry-After header when one is sent, falling back to backoff_delay
-// otherwise.
+// retryable HTTP status (rate limiting, a momentary server failure, 529
+// overloaded) *and* on a transport-level failure (connection refused,
+// DNS failure, a curl timeout) up to retry.max_attempts times — a
+// transport error never reaching an HTTP response is exactly the kind of
+// transient failure retry exists for, not a reason to give up on the
+// first attempt. It respects the server's own Retry-After header when
+// one is sent, falling back to backoff_delay otherwise.
 pub fn (p Provider) complete(req vai.Request) !vai.Response {
 	body := encode_request(req)
 	headers := {
@@ -27,15 +30,24 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 	}
 	url := '${p.base_url}/v1/messages'
 
-	mut last_status := 0
-	mut last_body := ''
+	sw := time.new_stopwatch()
+	mut final_err := 'no attempts were made'
 	for attempt in 0 .. p.retry.max_attempts {
-		http_resp := p.transport.post_json(url, headers, body)!
-		if http_resp.status == 200 {
-			return decode_response(http_resp.body)
+		http_resp := p.transport.post_json(url, headers, body) or {
+			final_err = 'transport error: ${err.msg()}'
+			if attempt < p.retry.max_attempts - 1 {
+				time.sleep(p.retry.backoff_delay(attempt))
+			}
+			continue
 		}
-		last_status = http_resp.status
-		last_body = http_resp.body
+		if http_resp.status == 200 {
+			resp := decode_response(http_resp.body)!
+			return vai.Response{
+				...resp
+				latency_ms: sw.elapsed().milliseconds()
+			}
+		}
+		final_err = 'HTTP ${http_resp.status}: ${extract_error_message(http_resp.body)}'
 		if !vai.retryable_status(http_resp.status) {
 			break
 		}
@@ -48,7 +60,7 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 			time.sleep(delay)
 		}
 	}
-	return error('anthropic: HTTP ${last_status}: ${extract_error_message(last_body)}')
+	return error('anthropic: ${final_err}')
 }
 
 // stream sends req with stream: true and turns the response into
@@ -80,11 +92,19 @@ pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
 	return out
 }
 
+// pump_anthropic_events stamps every event with at_ms, the time since
+// the stream started, which is what a caller measures TTFT from (the
+// first content_delta's at_ms) and generation rate from (output length
+// over the span between the first and last delta's at_ms).
 fn pump_anthropic_events(raw_ch chan vai.RawSseEvent, out chan vai.StreamEvent) {
+	sw := time.new_stopwatch()
 	for {
 		raw := <-raw_ch or { break }
 		if ev := decode_stream_event(raw) {
-			out <- ev
+			out <- vai.StreamEvent{
+				...ev
+				at_ms: sw.elapsed().milliseconds()
+			}
 		}
 	}
 	out.close()
