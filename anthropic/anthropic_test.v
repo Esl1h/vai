@@ -11,11 +11,23 @@ fn test_encode_request_basic() {
 	out := encode_request(req)
 	assert out.contains('"model":"claude-sonnet-5"')
 	assert out.contains('"max_tokens":1024')
+	assert out.contains('"temperature":1')
 	assert out.contains('"role":"user"')
 	assert out.contains('"type":"text"')
 	assert out.contains('"text":"hi"')
 	assert !out.contains('"system"')
 	assert !out.contains('"stream"')
+}
+
+fn test_encode_request_custom_temperature() {
+	req := vai.Request{
+		model: 'claude-sonnet-5'
+		messages: [vai.user('hi')]
+		max_tokens: 1024
+		temperature: 0.5
+	}
+	out := encode_request(req)
+	assert out.contains('"temperature":0.5')
 }
 
 fn test_encode_request_with_system_and_stream() {
@@ -134,5 +146,77 @@ fn test_decode_stream_event_ignores_unhandled_types() {
 	}
 	if _ := decode_stream_event(ev) {
 		assert false, 'expected none for content_block_start'
+	}
+}
+
+fn test_thinking_block_roundtrips_with_signature() {
+	raw := '{"id":"msg_3","model":"claude-sonnet-5","content":[{"type":"thinking","thinking":"pondering","signature":"sig_abc"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}'
+	resp := decode_response(raw) or {
+		assert false, err.msg()
+		return
+	}
+	assert resp.content.len == 1
+	c := resp.content[0]
+	if c is vai.Thinking {
+		assert c.text == 'pondering'
+		assert c.signature == 'sig_abc'
+	} else {
+		assert false, 'expected Thinking'
+	}
+	req := vai.Request{
+		model: 'claude-sonnet-5'
+		messages: [vai.Message{
+			role: .assistant
+			content: resp.content
+		}]
+		max_tokens: 64
+	}
+	out := encode_request(req)
+	assert out.contains('"type":"thinking"')
+	assert out.contains('"thinking":"pondering"')
+	assert out.contains('"signature":"sig_abc"')
+}
+
+fn test_redacted_thinking_block_roundtrips() {
+	raw := '{"id":"msg_4","model":"claude-sonnet-5","content":[{"type":"redacted_thinking","data":"enc_blob"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}'
+	resp := decode_response(raw) or {
+		assert false, err.msg()
+		return
+	}
+	assert resp.content.len == 1
+	c := resp.content[0]
+	if c is vai.RedactedThinking {
+		assert c.data == 'enc_blob'
+	} else {
+		assert false, 'expected RedactedThinking'
+	}
+	req := vai.Request{
+		model: 'claude-sonnet-5'
+		messages: [vai.Message{
+			role: .assistant
+			content: resp.content
+		}]
+		max_tokens: 64
+	}
+	out := encode_request(req)
+	assert out.contains('"type":"redacted_thinking"')
+	assert out.contains('"data":"enc_blob"')
+}
+
+fn test_thinking_block_omitted_display_still_roundtrips() {
+	// With display:"omitted" (the default on current models) the thinking
+	// field arrives empty and the signature is the only payload; the API
+	// rejects a round-trip that drops it.
+	raw := '{"id":"msg_5","model":"claude-opus-5","content":[{"type":"thinking","thinking":"","signature":"sig_long_opaque_value"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}'
+	resp := decode_response(raw) or {
+		assert false, err.msg()
+		return
+	}
+	c := resp.content[0]
+	if c is vai.Thinking {
+		assert c.text == ''
+		assert c.signature == 'sig_long_opaque_value'
+	} else {
+		assert false, 'expected Thinking'
 	}
 }
