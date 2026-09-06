@@ -8,10 +8,23 @@ import time
 // (see NativeTransport), so this is the only way vai can honor
 // Request.stream. curl is assumed to be on the host, which is true of
 // virtually every Linux machine already.
-pub struct CurlTransport {}
+pub struct CurlTransport {
+pub:
+	connect_timeout_secs int = 10
+	// max_time_secs bounds post_json's whole request. Not applied to
+	// post_stream: a single fixed ceiling would kill a legitimately
+	// long, healthy generation. stall_timeout_secs guards that path
+	// instead, so a slow-but-progressing stream isn't punished for
+	// taking a while, only one that's actually stopped.
+	max_time_secs int = 120
+	// stall_timeout_secs aborts post_stream if curl sees effectively
+	// zero throughput for this many consecutive seconds (curl's
+	// --speed-limit/--speed-time), regardless of total elapsed time.
+	stall_timeout_secs int = 30
+}
 
-fn curl_args(url string, headers map[string]string, body string) []string {
-	mut args := ['-sS', '-N', '-X', 'POST']
+fn curl_args(url string, headers map[string]string, body string, connect_timeout_secs int) []string {
+	mut args := ['-sS', '-N', '-X', 'POST', '--connect-timeout', '${connect_timeout_secs}']
 	for k, v in headers {
 		args << '-H'
 		args << '${k}: ${v}'
@@ -26,7 +39,9 @@ fn curl_args(url string, headers map[string]string, body string) []string {
 // status code rides along after a newline curl itself appends
 // (`-w '\n%{http_code}'`), so this needs no separate header-dump file.
 pub fn (t CurlTransport) post_json(url string, headers map[string]string, body string) !HttpResponse {
-	mut args := curl_args(url, headers, body)
+	mut args := curl_args(url, headers, body, t.connect_timeout_secs)
+	args << '--max-time'
+	args << '${t.max_time_secs}'
 	args << '-w'
 	args << '\n%{http_code}'
 
@@ -35,11 +50,20 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 	p.set_redirect_stdio()
 	p.run()
 	out := p.stdout_slurp()
+	err_out := p.stderr_slurp()
 	p.wait()
 	p.close()
 
 	idx := out.last_index('\n') or { return error('curl produced no output') }
 	status := out[idx + 1..].trim_space().int()
+	// curl still writes the -w format string on total connection failure
+	// (timeout, refused, DNS), just with %{http_code} as "000" — that is
+	// not a valid HttpResponse to hand back as if a server had answered,
+	// it is the transport itself failing, which the caller needs as an
+	// error to retry on, not a status code to inspect.
+	if status == 0 {
+		return error('curl could not complete the request: ${err_out.trim_space()}')
+	}
 	return HttpResponse{
 		status: status
 		body: out[..idx]
@@ -54,7 +78,11 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 // everything) — so the line splitting and partial-line buffering across
 // reads happens here, not in the stdlib.
 pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body string) !chan RawSseEvent {
-	args := curl_args(url, headers, body)
+	mut args := curl_args(url, headers, body, t.connect_timeout_secs)
+	args << '--speed-limit'
+	args << '1'
+	args << '--speed-time'
+	args << '${t.stall_timeout_secs}'
 	mut p := os.new_process('curl')
 	p.set_args(args)
 	p.set_redirect_stdio()
