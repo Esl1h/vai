@@ -62,6 +62,12 @@ fn parse_session_file(path string) !Session {
 	mut sess := Session{}
 	mut usage := vai.Usage{}
 	mut seen_any_timestamp := false
+	// Claude Code writes one line per content block of an assistant turn,
+	// each repeating the same message.id and the same usage object, so a
+	// plain sum roughly doubles every count (a real transcript on this
+	// machine had 1562 usage lines for 924 distinct ids). Count each
+	// message id once.
+	mut seen_message_ids := map[string]bool{}
 
 	for line in lines {
 		if line.trim_space() == '' {
@@ -105,6 +111,14 @@ fn parse_session_file(path string) !Session {
 			sess.model = model_val.str()
 		}
 		if usage_val := msg['usage'] {
+			if id_val := msg['id'] {
+				if id_val is string {
+					if id_val in seen_message_ids {
+						continue
+					}
+					seen_message_ids[id_val] = true
+				}
+			}
 			accumulate_usage(mut usage, usage_val.as_map())
 		}
 	}
