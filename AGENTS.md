@@ -87,6 +87,18 @@ subsequent `v test .` until this was cleared — the code itself was fine.
 - A left shift on a signed value (`i64(x) << n`) triggers a compiler
   notice about sign changes; cast to `u64` for the shift and convert back
   after, as `retry.v`'s `backoff_delay` does.
+- **A bare `for { ... return ... }` with only conditional returns inside
+  does not satisfy V's "missing return" check**, even when every reachable
+  path logically returns — the checker won't prove that for you. Both
+  `Provider.complete()` methods had to become a bounded
+  `for attempt in 0 .. p.retry.max_attempts { ... }` followed by an
+  unconditional `return error(...)` after the loop, instead of an infinite
+  loop with an internal exhaustion check. Reach for a bounded loop plus a
+  trailing return whenever a retry/poll loop needs to "give up after N".
+- A struct field can be marked required with `@[required]` (e.g.
+  `openai.Provider.base_url`) to force every literal to set it explicitly
+  — used instead of a `base_url` default, since there's no sane default
+  for an OpenAI-compatible endpoint the way there is for Anthropic's.
 
 ## Design decisions worth knowing before changing scope
 
@@ -100,8 +112,16 @@ subsequent `v test .` until this was cleared — the code itself was fine.
 - **`Transport.post_stream` returns `RawSseEvent`, not `vai.StreamEvent`.**
   Turning raw SSE into a meaningful event is a provider's job. A
   `Provider.stream()` method (not yet written — see Not Yet Implemented)
-  is what chains `Transport.post_stream` through a provider's
-  `decode_stream_event`.
+  is what will chain `Transport.post_stream` through a provider's
+  `decode_stream_event`, the same way `Provider.complete()` already chains
+  `Transport.post_json` through `decode_response`.
+- **`Provider.complete()` retries internally and returns the final error
+  as a plain V error, not an `RpcError`-style value.** It reads
+  `HttpResponse.retry_after` and falls back to `retry.backoff_delay` when
+  the server didn't send one. A caller that wants to distinguish "gave up
+  after retries" from "not retryable at all" has to parse the error
+  string — there's no typed error here yet. Revisit only if a downstream
+  tool (`ccstat`, `llmbench`, `jaid`) actually needs that distinction.
 - **`NativeTransport.post_stream` always errors.** V's `net.http` has no
   streaming response support in this version; that was the single biggest
   risk called out before this module was written, and it's confirmed real,
@@ -136,17 +156,20 @@ subsequent `v test .` until this was cleared — the code itself was fine.
   A correct implementation needs its own partial-line buffering across
   reads, tested against a real subprocess before it's trusted — don't
   improvise this into an unrelated commit.
-- **`anthropic.Provider` / `openai.Provider`** (the structs that hold a
-  `Transport` + config and implement `complete()`/`stream()`/`models()`/
-  `count_tokens()`). Only the pure encode/decode functions exist so far
-  (`encode_request`, `decode_response`, `decode_stream_event` in both
-  submodules) — they're fully tested against fixtures, but nothing wires
-  them to a `Transport` yet.
+- **`Provider.stream()`, `Provider.models()`, `Provider.count_tokens()`**.
+  Only `complete()` exists on `anthropic.Provider` and `openai.Provider`
+  so far. `stream()` needs `CurlTransport` first; `models()` and
+  `count_tokens()` just haven't been asked for yet by anything downstream.
 - No live call to a real Anthropic or OpenAI-compatible endpoint has been
   made from this codebase. Everything is verified against fixtures and a
-  local mock `net.http.Server` (see `transport_http_test.v`), on purpose
-  — this project follows the same rule as `dnsbench`: tests never send
-  traffic to a real third-party endpoint.
+  local mock `net.http.Server` (see `transport_http_test.v`,
+  `anthropic/provider_test.v`, `openai/provider_test.v` — the latter two
+  exercise the retry path for real, with short sleeps, not just the happy
+  path), on purpose — this project follows the same rule as `dnsbench`:
+  tests never send traffic to a real third-party endpoint.
+  `Provider.complete()` is wired and tested against a mock, but has not
+  yet been run against the real Anthropic API or a real OpenAI-compatible
+  server.
 
 ## Build and test
 
@@ -162,7 +185,7 @@ slow-compile note above.
 ## Do not
 
 - Add a tokenizer. Use `usage` from a response, or a provider's
-  `count_tokens` endpoint, once `Provider` exists.
+  `count_tokens` endpoint, once `Provider.count_tokens()` exists.
 - Flatten Anthropic's and OpenAI's differences (thinking blocks, cache
   control, tool use) into one shape. Each provider submodule exposes its
   own encode/decode; `vai`'s root types stay the common denominator, not a
