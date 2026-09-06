@@ -51,6 +51,45 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 	return error('anthropic: HTTP ${last_status}: ${extract_error_message(last_body)}')
 }
 
+// stream sends req with stream: true and turns the response into
+// vai.StreamEvent values on the returned channel, closed once the
+// underlying transport's raw SSE channel closes.
+//
+// Known gap: unlike complete(), stream does not retry and does not see
+// the HTTP status of the request at all — Transport.post_stream returns
+// only a channel, no status code. If the server answers with a non-2xx
+// error instead of an event stream (e.g. a 429 JSON body), that body's
+// lines get fed to the SSE parser like any other line and most likely
+// produce zero events, not a clear error. Fixing this needs a Transport
+// interface change (surfacing the status before or alongside the raw
+// event channel) that hasn't been done yet.
+pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
+	mut streaming_req := req
+	streaming_req.stream = true
+	body := encode_request(streaming_req)
+	headers := {
+		'x-api-key':         p.api_key
+		'anthropic-version': p.version
+		'content-type':      'application/json'
+	}
+	url := '${p.base_url}/v1/messages'
+
+	raw_ch := p.transport.post_stream(url, headers, body)!
+	out := chan vai.StreamEvent{ cap: 32 }
+	spawn pump_anthropic_events(raw_ch, out)
+	return out
+}
+
+fn pump_anthropic_events(raw_ch chan vai.RawSseEvent, out chan vai.StreamEvent) {
+	for {
+		raw := <-raw_ch or { break }
+		if ev := decode_stream_event(raw) {
+			out <- ev
+		}
+	}
+	out.close()
+}
+
 // extract_error_message pulls error.message out of Anthropic's error
 // body ({"type":"error","error":{"type":...,"message":...}}), falling
 // back to the raw body when it isn't that shape.
