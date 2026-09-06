@@ -12,7 +12,7 @@ v install https://github.com/Esl1h/vai
 
 ## What's here
 
-- **Core types** (`types.v`): `Message`, `Content` (a sum type: text, image, tool use, tool result, thinking), `Usage`, `Request`, `Response`, `StreamEvent`.
+- **Core types** (`types.v`): `Message`, `Content` (a sum type: text, image, tool use, tool result, thinking, redacted thinking), `Usage`, `Request`, `Response`, `StreamEvent`.
 - **Cost accounting** (`cost.v`): a real, sourced pricing table for Anthropic's current models (Opus 5, Sonnet 5, Haiku 4.5, Claude Fable 5.1), all four token categories including cache write/read, and a `PriceBook` for adding or overriding prices without forking the module.
 - **Retry** (`retry.v`): which HTTP statuses are worth retrying, and exponential backoff with jitter.
 - **SSE framing** (`sse.v`): a provider-agnostic incremental parser (`SseParser.feed(line)`), because a transport reads a stream one line at a time, not as one complete body.
