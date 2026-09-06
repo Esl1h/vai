@@ -99,6 +99,15 @@ subsequent `v test .` until this was cleared — the code itself was fine.
   `openai.Provider.base_url`) to force every literal to set it explicitly
   — used instead of a `base_url` default, since there's no sane default
   for an OpenAI-compatible endpoint the way there is for Anthropic's.
+- `os.Process.stdout_read()` is non-blocking and returns `''` immediately
+  when nothing is pending — it is not "wait for a line," it's "give me
+  whatever's here right now, which may be empty, one line, half a line, or
+  several lines." `CurlTransport.post_stream`'s `pump_curl_stdout` buffers
+  across calls and only ever hands the SSE parser a complete line, polling
+  with a short `time.sleep` between empty reads while `p.is_alive()`.
+- `curl -w '\n%{http_code}'` is what gives `CurlTransport.post_json` the
+  status code without a separate header-dump file: curl appends it after
+  the body, and the response is split on the *last* newline.
 
 ## Design decisions worth knowing before changing scope
 
@@ -110,11 +119,15 @@ subsequent `v test .` until this was cleared — the code itself was fine.
   collapse these; a transport should never need to know which provider
   it's talking to.
 - **`Transport.post_stream` returns `RawSseEvent`, not `vai.StreamEvent`.**
-  Turning raw SSE into a meaningful event is a provider's job. A
-  `Provider.stream()` method (not yet written — see Not Yet Implemented)
-  is what will chain `Transport.post_stream` through a provider's
-  `decode_stream_event`, the same way `Provider.complete()` already chains
-  `Transport.post_json` through `decode_response`.
+  Turning raw SSE into a meaningful event is a provider's job.
+  `Provider.stream()` chains `Transport.post_stream` through a provider's
+  `decode_stream_event` via a small spawned pump function
+  (`pump_anthropic_events`/`pump_openai_events`) that reads the raw
+  channel and forwards only the events `decode_stream_event` recognizes
+  onto a second channel it owns, closing that channel when the raw one
+  closes. The same shape as `Provider.complete()` chaining
+  `Transport.post_json` through `decode_response`, just with a goroutine
+  in between instead of a direct call.
 - **`Provider.complete()` retries internally and returns the final error
   as a plain V error, not an `RpcError`-style value.** It reads
   `HttpResponse.retry_after` and falls back to `retry.backoff_delay` when
@@ -122,12 +135,23 @@ subsequent `v test .` until this was cleared — the code itself was fine.
   after retries" from "not retryable at all" has to parse the error
   string — there's no typed error here yet. Revisit only if a downstream
   tool (`ccstat`, `llmbench`, `jaid`) actually needs that distinction.
+- **`Provider.stream()` has neither of those things**: no retry, and no
+  visibility into the HTTP status at all, because `Transport.post_stream`
+  returns only a channel. A non-2xx response (e.g. a 429 JSON body instead
+  of an event stream) gets fed to the SSE parser line by line like
+  anything else and most likely produces zero events. This is a real gap,
+  not an oversight to silently work around — fixing it needs a `Transport`
+  interface change (surfacing the status before or alongside the raw event
+  channel), which hasn't been done. Don't paper over it with a heuristic
+  (e.g. "first line doesn't look like SSE") inside a provider; fix the
+  interface if this actually blocks a downstream tool.
 - **`NativeTransport.post_stream` always errors.** V's `net.http` has no
   streaming response support in this version; that was the single biggest
   risk called out before this module was written, and it's confirmed real,
-  not assumed. `NativeTransport` covers `post_json` only. Do not attempt to
-  fake streaming through it (e.g. polling `stop_receiving_limit` chunks) —
-  wait for `CurlTransport`.
+  not assumed. `CurlTransport` is what actually streams — verified against
+  a real `curl` subprocess talking to a local mock server, not just
+  fixtures (see `transport_curl_test.v`,
+  `anthropic/provider_stream_test.v`, `openai/provider_stream_test.v`).
 - **Pricing is a plain `const` map, not an embedded JSON asset.** The
   original design considered `$embed_file('pricing.json')` plus an
   `$XDG_CONFIG_HOME` override; that's real complexity for marginal gain at
@@ -149,26 +173,20 @@ subsequent `v test .` until this was cleared — the code itself was fine.
 
 ## Not yet implemented — do not assume these exist
 
-- **`CurlTransport`** (streaming via `curl -N` in a subprocess). This was
-  deliberately deferred rather than rushed: `os.Process` in this V version
-  has no line-buffered stdout read, only `stdout_read()` (whatever's
-  currently available) and `stdout_slurp()` (blocks for the whole output).
-  A correct implementation needs its own partial-line buffering across
-  reads, tested against a real subprocess before it's trusted — don't
-  improvise this into an unrelated commit.
-- **`Provider.stream()`, `Provider.models()`, `Provider.count_tokens()`**.
-  Only `complete()` exists on `anthropic.Provider` and `openai.Provider`
-  so far. `stream()` needs `CurlTransport` first; `models()` and
-  `count_tokens()` just haven't been asked for yet by anything downstream.
+- **`Provider.models()`, `Provider.count_tokens()`**. Neither endpoint is
+  called from anywhere yet — nothing downstream has asked for them.
+- **Streaming that surfaces a pre-stream HTTP error status.** See the
+  `Provider.stream()` gap above. `stream()` works correctly for the happy
+  path (verified against a real subprocess) but gives no clear signal when
+  the server rejects the request instead of streaming.
 - No live call to a real Anthropic or OpenAI-compatible endpoint has been
   made from this codebase. Everything is verified against fixtures and a
-  local mock `net.http.Server` (see `transport_http_test.v`,
-  `anthropic/provider_test.v`, `openai/provider_test.v` — the latter two
-  exercise the retry path for real, with short sleeps, not just the happy
-  path), on purpose — this project follows the same rule as `dnsbench`:
-  tests never send traffic to a real third-party endpoint.
-  `Provider.complete()` is wired and tested against a mock, but has not
-  yet been run against the real Anthropic API or a real OpenAI-compatible
+  local mock `net.http.Server`, on purpose — this project follows the same
+  rule as `dnsbench`: tests never send traffic to a real third-party
+  endpoint. `complete()` and `stream()` are both wired and tested against
+  a mock (including `complete()`'s retry path with short real sleeps, and
+  `stream()` end-to-end through a real `curl` subprocess), but neither has
+  been run against the real Anthropic API or a real OpenAI-compatible
   server.
 
 ## Build and test
