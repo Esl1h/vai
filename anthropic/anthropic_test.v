@@ -131,6 +131,24 @@ fn test_decode_stream_event_usage_from_message_delta() {
 	assert se.usage.output_tokens == 42
 }
 
+fn test_decode_stream_event_usage_from_message_start() {
+	// message_start is the only event that carries input_tokens and the
+	// cache counts (verified against the streaming docs' examples).
+	ev := vai.RawSseEvent{
+		event: 'message_start'
+		data: '{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-opus-5","usage":{"input_tokens":2679,"cache_creation_input_tokens":10,"cache_read_input_tokens":20,"output_tokens":3}}}'
+	}
+	se := decode_stream_event(ev) or {
+		assert false, 'expected a usage event'
+		return
+	}
+	assert se.kind == .usage
+	assert se.usage.input_tokens == 2679
+	assert se.usage.cache_write_tokens == 10
+	assert se.usage.cache_read_tokens == 20
+	assert se.usage.output_tokens == 3
+}
+
 fn test_decode_stream_event_done() {
 	ev := vai.RawSseEvent{
 		data: '{"type":"message_stop"}'
