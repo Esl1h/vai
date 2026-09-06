@@ -18,14 +18,15 @@ v install https://github.com/Esl1h/vai
 - **SSE framing** (`sse.v`): a provider-agnostic incremental parser (`SseParser.feed(line)`), because a transport reads a stream one line at a time, not as one complete body.
 - **`local`** (`local/`): reads Claude Code's own session transcripts (`~/.claude/projects/**/*.jsonl`) for token usage, model, and timing — read defensively, since the format is undocumented and internal to the CLI.
 - **`anthropic`** (`anthropic/`) and **`openai`** (`openai/`): request encoding, response decoding, and stream-event decoding for each provider's actual wire format. Each is tested against realistic fixtures, not live calls.
-- **Transport** (`transport.v`, `transport_http.v`): the `Transport` interface, and `NativeTransport`, a `net.http`-based implementation for the non-streaming case.
-- **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` — wires a `Transport` through a provider's encode/decode, with retry on a retryable status (rate limiting, a momentary server failure, Anthropic's 529) that respects the server's own `Retry-After` header. Tested against a local mock server, including the retry path itself, not just the happy path.
+- **Transport** (`transport.v`, `transport_http.v`, `transport_curl.v`): the `Transport` interface, `NativeTransport` (`net.http`, non-streaming only), and `CurlTransport`, which shells out to `curl` for both request kinds and is what makes streaming work at all, since `net.http` has none. Handles the partial-line buffering across non-blocking reads itself, since `os.Process` doesn't give you a line-buffered read.
+- **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` with retry (rate limiting, a momentary server failure, Anthropic's 529, respecting the server's own `Retry-After` header), and `stream(req) !chan vai.StreamEvent`. Both tested against a local mock server — `complete()`'s retry path with a fake 429-then-succeed handler, `stream()` end-to-end through a real `curl` subprocess parsing a real SSE body.
 
 ## What's not here yet
 
-- **`CurlTransport`** (streaming via a `curl -N` subprocess), and therefore **`Provider.stream()`**. `NativeTransport.post_stream` always returns an error: V's own `net.http` has no streaming response support, which was the biggest risk in this whole project and is now a confirmed fact, not a guess. A correct subprocess-based streaming reader needs its own care around partial-line buffering and hasn't been rushed in.
-- **`Provider.count_tokens()`**. Nothing calls Anthropic's `count_tokens` endpoint yet.
-- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server` — this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `Provider.complete()` is wired and tested against a mock, but has not yet been run against the real API.
+- **`Provider.count_tokens()`** and **`Provider.models()`**. Nothing calls either endpoint yet.
+- **`stream()` doesn't see the HTTP status of the request.** `Transport.post_stream` returns only a channel, no status code, so a non-2xx error response (e.g. a 429 JSON body instead of an event stream) gets its body fed to the SSE parser like any other line and most likely produces zero events rather than a clear error. `complete()` doesn't have this problem. Fixing it needs a `Transport` interface change that hasn't been made.
+- **`stream()` doesn't retry.** `complete()` does; a streaming call that fails before or during the stream is the caller's problem to retry today.
+- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server` — this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `complete()` and `stream()` are wired and tested against a mock, but neither has been run against the real API yet.
 
 ## Usage (what works today)
 
@@ -59,6 +60,29 @@ resp := p.complete(vai.Request{
 	model:    'llama3'
 	messages: [vai.user('summarize this log')]
 })!
+```
+
+Streaming needs `CurlTransport` explicitly — the default is `NativeTransport`, which can't stream:
+
+```v
+import vai
+import vai.anthropic
+
+p := anthropic.Provider{
+	api_key:   os.getenv('ANTHROPIC_API_KEY')
+	transport: vai.CurlTransport{}
+}
+ch := p.stream(vai.Request{
+	model:    'claude-sonnet-5'
+	messages: [vai.user('summarize this log')]
+	stream:   true
+})!
+for {
+	ev := <-ch or { break }
+	if ev.kind == .content_delta {
+		print(ev.text)
+	}
+}
 ```
 
 Reading local session state:
