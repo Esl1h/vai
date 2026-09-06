@@ -19,12 +19,13 @@ v install https://github.com/Esl1h/vai
 - **`local`** (`local/`): reads Claude Code's own session transcripts (`~/.claude/projects/**/*.jsonl`) for token usage, model, and timing — read defensively, since the format is undocumented and internal to the CLI.
 - **`anthropic`** (`anthropic/`) and **`openai`** (`openai/`): request encoding, response decoding, and stream-event decoding for each provider's actual wire format. Each is tested against realistic fixtures, not live calls.
 - **Transport** (`transport.v`, `transport_http.v`): the `Transport` interface, and `NativeTransport`, a `net.http`-based implementation for the non-streaming case.
+- **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` — wires a `Transport` through a provider's encode/decode, with retry on a retryable status (rate limiting, a momentary server failure, Anthropic's 529) that respects the server's own `Retry-After` header. Tested against a local mock server, including the retry path itself, not just the happy path.
 
 ## What's not here yet
 
-- **`CurlTransport`** (streaming via a `curl -N` subprocess). `NativeTransport.post_stream` always returns an error: V's own `net.http` has no streaming response support, which was the biggest risk in this whole project and is now a confirmed fact, not a guess. A correct subprocess-based streaming reader needs its own care around partial-line buffering and hasn't been rushed in.
-- **`Provider`** structs (`anthropic.Provider`, `openai.Provider`) that hold a `Transport` and expose `complete()`/`stream()`/`count_tokens()`. The encode/decode functions those would call already exist and are tested; the wiring isn't written yet.
-- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server` — this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint.
+- **`CurlTransport`** (streaming via a `curl -N` subprocess), and therefore **`Provider.stream()`**. `NativeTransport.post_stream` always returns an error: V's own `net.http` has no streaming response support, which was the biggest risk in this whole project and is now a confirmed fact, not a guess. A correct subprocess-based streaming reader needs its own care around partial-line buffering and hasn't been rushed in.
+- **`Provider.count_tokens()`**. Nothing calls Anthropic's `count_tokens` endpoint yet.
+- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server` — this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `Provider.complete()` is wired and tested against a mock, but has not yet been run against the real API.
 
 ## Usage (what works today)
 
@@ -32,18 +33,32 @@ v install https://github.com/Esl1h/vai
 import vai
 import vai.anthropic
 
-req := vai.Request{
+p := anthropic.Provider{
+	api_key: os.getenv('ANTHROPIC_API_KEY')
+}
+resp := p.complete(vai.Request{
 	model:      'claude-sonnet-5'
 	messages:   [vai.user('summarize this log')]
 	max_tokens: 1024
-}
-body := anthropic.encode_request(req)
-
-// however the bytes come back (a real Transport, once one calls a live
-// endpoint, isn't wired up yet):
-resp := anthropic.decode_response(raw_json_response)!
+})!
 println(resp.content)
 println(vai.cost(resp.model, resp.usage).total())
+```
+
+Same shape for any OpenAI-compatible endpoint — Ollama, OpenRouter, RouteLLM/Abacus, LM Studio — just point `base_url` at it:
+
+```v
+import vai
+import vai.openai
+
+p := openai.Provider{
+	base_url: 'http://localhost:11434/v1'
+	// api_key: '...' // most local servers don't need one
+}
+resp := p.complete(vai.Request{
+	model:    'llama3'
+	messages: [vai.user('summarize this log')]
+})!
 ```
 
 Reading local session state:
@@ -69,7 +84,7 @@ make fmt
 
 ## Scope
 
-No tokenizer of its own: use `usage` from a response, or a provider's token-counting endpoint once `Provider` exists. No abstraction that flattens Anthropic and OpenAI's real differences (thinking blocks, cache control, tool use) into a lowest common denominator — each provider submodule encodes and decodes its own shape. No agent loop, memory, or RAG: that's application scope, not a client library's.
+No tokenizer of its own: use `usage` from a response, or a provider's token-counting endpoint once `Provider.count_tokens()` exists. No abstraction that flattens Anthropic and OpenAI's real differences (thinking blocks, cache control, tool use) into a lowest common denominator — each provider submodule encodes and decodes its own shape. No agent loop, memory, or RAG: that's application scope, not a client library's.
 
 ## License
 
