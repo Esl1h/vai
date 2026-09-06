@@ -50,4 +50,12 @@ fn test_provider_stream_end_to_end() {
 	assert events[1].kind == .usage
 	assert events[1].usage.input_tokens == 1
 	assert events[2].kind == .done
+
+	// at_ms must be real elapsed time from the stream's start, not an
+	// unset/stub zero: never negative, and non-decreasing across events
+	// arriving in order.
+	for ev in events {
+		assert ev.at_ms >= 0
+	}
+	assert events[2].at_ms >= events[0].at_ms
 }

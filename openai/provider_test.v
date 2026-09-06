@@ -27,6 +27,20 @@ fn (mut h MockHandler) handle(_ http.Request) http.Response {
 	return r
 }
 
+// SlowHandler always succeeds, after a delay large enough that
+// latency_ms being real timing (not a stub returning a constant) is
+// unambiguous even under scheduling jitter.
+struct SlowHandler {}
+
+fn (h SlowHandler) handle(_ http.Request) http.Response {
+	time.sleep(50 * time.millisecond)
+	mut r := http.Response{
+		body: '{"id":"chatcmpl-1","model":"llama3","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}'
+	}
+	r.set_status(.ok)
+	return r
+}
+
 fn start_mock(addr string, fail_times int, fail_status int) &http.Server {
 	mut server := &http.Server{
 		addr: addr
@@ -83,6 +97,60 @@ fn test_provider_complete_retries_then_succeeds() {
 		return
 	}
 	assert resp.id == 'chatcmpl-1'
+}
+
+fn test_provider_complete_sets_latency_ms() {
+	mut server := &http.Server{
+		addr: '127.0.0.1:18344'
+		handler: SlowHandler{}
+		show_startup_message: false
+	}
+	spawn server.listen_and_serve()
+	server.wait_till_running() or { panic(err) }
+	defer {
+		server.close()
+	}
+
+	p := Provider{
+		base_url: 'http://127.0.0.1:18344'
+	}
+	resp := p.complete(vai.Request{
+		model: 'llama3'
+		messages: [vai.user('hi')]
+	}) or {
+		assert false, err.msg()
+		return
+	}
+	// SlowHandler sleeps 50ms; give real scheduling jitter plenty of room
+	// while still ruling out latency_ms being an unset/stub zero.
+	assert resp.latency_ms >= 30
+}
+
+// A transport-level failure (here: nothing listens on 127.0.0.1:1, so
+// curl can never even connect) must be retried like a retryable HTTP
+// status, and must never surface as "HTTP 0" — CurlTransport.post_json
+// used to return status: 0 as if it were a real (if useless) response
+// instead of an error, which made this failure mode skip retry entirely.
+fn test_provider_complete_retries_transport_failure() {
+	p := Provider{
+		base_url: 'http://127.0.0.1:1'
+		transport: vai.Transport(vai.CurlTransport{
+			connect_timeout_secs: 1
+		})
+		retry: vai.RetryPolicy{
+			max_attempts: 2
+			base_delay: 30 * time.millisecond
+			max_delay: 50 * time.millisecond
+		}
+	}
+	if _ := p.complete(vai.Request{
+		model: 'llama3'
+		messages: [vai.user('hi')]
+	}) {
+		assert false, 'expected an error'
+	} else {
+		assert err.msg().contains('transport error'), err.msg()
+	}
 }
 
 fn test_provider_complete_does_not_retry_non_retryable_status() {
