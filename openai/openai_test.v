@@ -11,6 +11,7 @@ fn test_encode_request_text_collapses_to_plain_string() {
 	out := encode_request(req)
 	assert out.contains('"content":"hi"')
 	assert out.contains('"role":"user"')
+	assert out.contains('"temperature":1')
 	assert !out.contains('"content":[')
 }
 
