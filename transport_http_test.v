@@ -1,6 +1,7 @@
 module vai
 
 import net.http
+import time
 
 // echo_handler is a minimal mock server: it never leaves the machine, per
 // this project's own rule against hitting real endpoints from tests. It
@@ -18,6 +19,18 @@ fn (h EchoHandler) handle(req http.Request) http.Response {
 		body: '{"echo":"${req.data}"}'
 	}
 	resp.set_status(status)
+	return resp
+}
+
+// SlowHandler answers only after a delay, to exercise the read timeout.
+struct SlowHandler {}
+
+fn (h SlowHandler) handle(_ http.Request) http.Response {
+	time.sleep(2 * time.second)
+	mut resp := http.Response{
+		body: '{}'
+	}
+	resp.set_status(.ok)
 	return resp
 }
 
@@ -63,6 +76,32 @@ fn test_native_transport_post_json_propagates_error_status() {
 		return
 	}
 	assert resp.status == 429
+}
+
+fn test_native_transport_default_timeout_is_longer_than_net_http() {
+	// net.http defaults to 30 s, which a slow local model exceeds.
+	t := NativeTransport{}
+	assert t.timeout_secs > 30
+}
+
+fn test_native_transport_post_json_honors_timeout() {
+	mut server := &http.Server{
+		addr: '127.0.0.1:18323'
+		handler: SlowHandler{}
+		show_startup_message: false
+	}
+	spawn server.listen_and_serve()
+	server.wait_till_running() or { panic(err) }
+	defer {
+		server.close()
+	}
+
+	t := NativeTransport{
+		timeout_secs: 1
+	}
+	if _ := t.post_json('http://127.0.0.1:18323/', {}, '{}') {
+		assert false, 'expected a timeout error'
+	}
 }
 
 fn test_native_transport_post_stream_is_unsupported() {
