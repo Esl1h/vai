@@ -4,7 +4,8 @@ import os
 import rand
 
 const fixture_session_1 = '{"type":"user","sessionId":"s1","cwd":"/home/esli/GIT/redact","timestamp":"2026-09-06T01:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}
-{"type":"assistant","sessionId":"s1","cwd":"/home/esli/GIT/redact","timestamp":"2026-09-06T01:00:05.000Z","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":50,"output_tokens":30}}}
+{"type":"assistant","sessionId":"s1","cwd":"/home/esli/GIT/redact","timestamp":"2026-09-06T01:00:05.000Z","message":{"id":"msg_a","role":"assistant","model":"claude-sonnet-5","content":[{"type":"text","text":"one"}],"usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":50,"output_tokens":30}}}
+{"type":"assistant","sessionId":"s1","cwd":"/home/esli/GIT/redact","timestamp":"2026-09-06T01:00:06.000Z","message":{"id":"msg_a","role":"assistant","model":"claude-sonnet-5","content":[{"type":"tool_use","id":"t1"}],"usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":50,"output_tokens":30}}}
 {"type":"assistant","sessionId":"s1","cwd":"/home/esli/GIT/redact","timestamp":"2026-09-06T01:02:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":150,"output_tokens":40}}}
 '
 
@@ -24,6 +25,8 @@ fn rand_suffix() string {
 }
 
 fn test_claude_sessions_from_root_parses_fixture() {
+	// The fixture repeats msg_a on two lines (one per content block, the
+	// way Claude Code writes them); its usage must be counted once.
 	with_fixture(fn (root string) ! {
 		sessions := claude_sessions_from_root(root)!
 		assert sessions.len == 1
