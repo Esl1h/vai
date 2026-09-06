@@ -12,6 +12,10 @@ pub fn encode_request(req vai.Request) string {
 	mut m := map[string]json2.Any{}
 	m['model'] = req.model
 	m['max_tokens'] = req.max_tokens
+	// Always sent: the API default is 1.0, thinking models require
+	// exactly 1.0, and there is no way to distinguish "explicitly 1.0"
+	// from the struct default to omit it.
+	m['temperature'] = req.temperature
 	m['messages'] = encode_messages(req.messages)
 	if req.system != '' {
 		m['system'] = req.system
@@ -92,6 +96,13 @@ fn encode_content_block(c vai.Content) json2.Any {
 			mut m := map[string]json2.Any{}
 			m['type'] = 'thinking'
 			m['thinking'] = c.text
+			m['signature'] = c.signature
+			json2.Any(m)
+		}
+		vai.RedactedThinking {
+			mut m := map[string]json2.Any{}
+			m['type'] = 'redacted_thinking'
+			m['data'] = c.data
 			json2.Any(m)
 		}
 	}
