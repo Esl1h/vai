@@ -52,6 +52,44 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 	return error('openai: HTTP ${last_status}: ${extract_error_message(last_body)}')
 }
 
+// stream sends req with stream: true and turns the response into
+// vai.StreamEvent values on the returned channel, closed once the
+// underlying transport's raw SSE channel closes.
+//
+// Known gap: unlike complete(), stream does not retry and does not see
+// the HTTP status of the request at all — Transport.post_stream returns
+// only a channel, no status code. A non-2xx error response gets its body
+// fed to the SSE parser like any other line and most likely produces zero
+// events rather than a clear error. Fixing this needs a Transport
+// interface change that hasn't been done yet.
+pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
+	mut streaming_req := req
+	streaming_req.stream = true
+	body := encode_request(streaming_req)
+	mut headers := {
+		'content-type': 'application/json'
+	}
+	if p.api_key != '' {
+		headers['authorization'] = 'Bearer ${p.api_key}'
+	}
+	url := '${p.base_url}/chat/completions'
+
+	raw_ch := p.transport.post_stream(url, headers, body)!
+	out := chan vai.StreamEvent{ cap: 32 }
+	spawn pump_openai_events(raw_ch, out)
+	return out
+}
+
+fn pump_openai_events(raw_ch chan vai.RawSseEvent, out chan vai.StreamEvent) {
+	for {
+		raw := <-raw_ch or { break }
+		if ev := decode_stream_event(raw) {
+			out <- ev
+		}
+	}
+	out.close()
+}
+
 // extract_error_message pulls error.message out of an OpenAI-compatible
 // error body ({"error":{"message":...,"type":...}}), falling back to the
 // raw body when it isn't that shape.
