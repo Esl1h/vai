@@ -125,10 +125,11 @@ pub:
 	content     []Content
 	usage       Usage
 	stop_reason string
-	latency_ms  i64
-	// ttft_ms is -1 when the response did not stream (time to first token
-	// only means something for a streamed call).
-	ttft_ms i64 = -1
+	// latency_ms is wall-clock time for the whole call, set by
+	// Provider.complete(). There is no ttft_ms here: complete() never
+	// streams, so "time to first token" has nothing to measure — see
+	// StreamEvent.at_ms for that, on the streaming path.
+	latency_ms i64
 }
 
 pub enum EventKind {
