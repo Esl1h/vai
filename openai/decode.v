@@ -25,10 +25,14 @@ pub fn decode_response(raw string) !vai.Response {
 				}
 				if msg_val := first['message'] {
 					if msg_val is map[string]json2.Any {
+						// "content": null is what a tool_calls answer carries;
+						// Any.str() would decode it as the text "null".
 						if text_val := msg_val['content'] {
-							content = [
-								vai.Content(vai.TextContent{ text: text_val.str() }),
-							]
+							if text_val is string {
+								content = [
+									vai.Content(vai.TextContent{ text: text_val }),
+								]
+							}
 						}
 					}
 				}
@@ -110,6 +114,12 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 	delta_val := first['delta'] or { return none }
 	delta := delta_val.as_map()
 	text_val := delta['content'] or { return none }
+	// Reasoning models and some servers (vLLM, OpenRouter) send
+	// "content": null on chunks that carry no text; Any.str() would turn
+	// that into the literal word null in the output.
+	if text_val !is string {
+		return none
+	}
 	text := text_val.str()
 	if text == '' {
 		return none
