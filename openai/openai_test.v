@@ -93,6 +93,29 @@ fn test_decode_stream_event_usage_when_present() {
 	assert se.usage.output_tokens == 4
 }
 
+fn test_decode_response_null_content_is_not_the_text_null() {
+	// A tool_calls answer carries "content": null; Any.str() on a Null
+	// yields the word "null", which must not become a TextContent.
+	raw := '{"id":"chatcmpl-3","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}'
+	resp := decode_response(raw) or {
+		assert false, err.msg()
+		return
+	}
+	assert resp.content.len == 0
+	assert resp.stop_reason == 'tool_calls'
+}
+
+fn test_decode_stream_event_ignores_null_content_delta() {
+	// Reasoning models stream chunks with "content": null next to a
+	// reasoning field; those must not surface as a "null" text delta.
+	ev := vai.RawSseEvent{
+		data: '{"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":"hmm"},"finish_reason":null}]}'
+	}
+	if _ := decode_stream_event(ev) {
+		assert false, 'expected none for a null content delta'
+	}
+}
+
 fn test_decode_stream_event_ignores_empty_delta() {
 	ev := vai.RawSseEvent{
 		data: '{"id":"1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}'
