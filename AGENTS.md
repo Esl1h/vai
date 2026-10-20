@@ -127,8 +127,10 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   tree**, same resolution quirk as toklen's sibling-`vai` bug, other
   manifestation. The two copies going out of sync makes submodule tests
   fail with "no field named ..." / "no variant ..." on changes that are
-  right here. To test root-module changes: temporarily move
-  `~/.vmodules/vai` out of the way, or re-`v install` first.
+  right here. To test root-module changes, point `VMODULES` at an empty
+  directory for the run (`VMODULES=$(mktemp -d) make check`), so
+  `import vai` resolves to this tree; CI has no installed copy and is
+  not affected.
 
 ## Design decisions worth knowing before changing scope
 
@@ -156,16 +158,16 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   after retries" from "not retryable at all" has to parse the error
   string, there's no typed error here yet. Revisit only if a downstream
   tool (`ccstat`, `llmbench`, `jaid`) actually needs that distinction.
-- **`Provider.stream()` has neither of those things**: no retry, and no
-  visibility into the HTTP status at all, because `Transport.post_stream`
-  returns only a channel. A non-2xx response (e.g. a 429 JSON body instead
-  of an event stream) gets fed to the SSE parser line by line like
-  anything else and most likely produces zero events. This is a real gap,
-  not an oversight to silently work around, fixing it needs a `Transport`
-  interface change (surfacing the status before or alongside the raw event
-  channel), which hasn't been done. Don't paper over it with a heuristic
-  (e.g. "first line doesn't look like SSE") inside a provider; fix the
-  interface if this actually blocks a downstream tool.
+- **`Provider.stream()` does not retry, but it does report failure.**
+  `CurlTransport.post_stream` has curl write the HTTP status to stderr
+  (`-w '%{stderr}...%{http_code}'`, read once curl exits), keeps the lines
+  read before the first SSE event (where a JSON error body lands), and
+  ends the channel with one synthetic `RawSseEvent` carrying `status` plus
+  that body, or `err` for a curl failure (connection refused, a stall,
+  exit code != 0). Each provider's pump turns it into one `.error` event
+  worded like `complete()`'s errors. The `Transport` interface did not
+  change; any other transport reports failure the same way, through
+  those two fields, never through a heuristic in a provider.
 - **`NativeTransport` sets `read_timeout`/`write_timeout` on every
   request (`timeout_secs`, default 300).** net.http's own default is 30 s
   per socket read, and a non-streaming completion on a slow local model
@@ -199,7 +201,22 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   every total. The schema is undocumented and internal to Claude Code;
   expect it to drift across CLI versions without notice, and re-verify
   against a real `~/.claude/projects/**/*.jsonl` file before trusting a
-  schema change.
+  schema change. Subagent transcripts (`<session>/subagents/*.jsonl`)
+  carry the parent's sessionId and are merged into it; a `<synthetic>`
+  model is Claude Code's placeholder and never becomes the session model.
+- **`local.pi_sessions()`/`omp_sessions()`** read pi's session format
+  version 3 (omp is a pi fork that kept it): assistant `message` usage plus
+  the `usage`, `compaction` and `branch_summary` entries pi writes for its
+  own summaries. Verified against omp 18.12 sessions and pi 1.3.0's source.
+- **`vai.local.opencode` is its own module because it links libsqlite3**
+  (`db.sqlite`, header needed at build time: `sqlite-devel` /
+  `libsqlite3-dev`). It reads OpenCode's per-session totals
+  (`session_v2`, or `session` before OpenCode 2), not the messages: the
+  totals include calls never stored as messages and are what OpenCode
+  reports. OpenCode counts reasoning apart from output, so it is added
+  into `output_tokens`; child sessions (`parent_id`, subagents) are not in
+  the parent's total and are folded into their root. Opened read-only.
+  Never read the `credential`/`account` tables.
 
 ## Not yet implemented, do not assume these exist
 
@@ -224,19 +241,14 @@ subsequent `v test .` until this was cleared, the code itself was fine.
   cache counts, `message_delta` with `output_tokens`). A caller pricing a
   stream keeps the last non-zero value per field; `vai` does not merge
   them into one event yet.
-- **Streaming that surfaces a pre-stream HTTP error status.** See the
-  `Provider.stream()` gap above. `stream()` works correctly for the happy
-  path (verified against a real subprocess) but gives no clear signal when
-  the server rejects the request instead of streaming.
-- No live call to a real Anthropic or OpenAI-compatible endpoint has been
-  made from this codebase. Everything is verified against fixtures and a
-  local mock `net.http.Server`, on purpose, this project follows the same
-  rule as `dnsbench`: tests never send traffic to a real third-party
-  endpoint. `complete()` and `stream()` are both wired and tested against
-  a mock (including `complete()`'s retry path with short real sleeps, and
-  `stream()` end-to-end through a real `curl` subprocess), but neither has
-  been run against the real Anthropic API or a real OpenAI-compatible
-  server.
+- **Tests never send traffic to a real endpoint**, on purpose, the same
+  rule as `dnsbench`: everything in the suite runs against fixtures and a
+  local mock `net.http.Server`. By hand, on 2026-10-20, `complete()` and
+  `stream()` were run against a local Ollama (both dialects, with and
+  without a reasoning model), z.AI's GLM Coding Plan
+  (`https://api.z.ai/api/coding/paas/v4` and `https://api.z.ai/api/anthropic`,
+  text, reasoning, usage and a 401), and OpenCode Go's error responses.
+  Never against Anthropic's or OpenAI's own API.
 
 ## Build and test
 
