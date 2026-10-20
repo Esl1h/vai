@@ -1,11 +1,12 @@
 module openai
 
 import vai
+import json2
 
 fn test_encode_request_text_collapses_to_plain_string() {
 	req := vai.Request{
-		model: 'llama3'
-		messages: [vai.user('hi')]
+		model:      'llama3'
+		messages:   [vai.user('hi')]
 		max_tokens: 512
 	}
 	out := encode_request(req)
@@ -15,14 +16,19 @@ fn test_encode_request_text_collapses_to_plain_string() {
 	assert !out.contains('"content":[')
 }
 
-fn test_encode_request_system_becomes_leading_message() {
+fn test_encode_request_system_becomes_leading_message() ! {
 	req := vai.Request{
-		model: 'llama3'
+		model:    'llama3'
 		messages: [vai.user('hi')]
-		system: 'be terse'
+		system:   'be terse'
 	}
 	out := encode_request(req)
-	assert out.contains('"role":"system","content":"be terse"')
+	// Decoded rather than matched as text: json2 does not guarantee key order.
+	msgs := (json2.decode[json2.Any](out)!.as_map()['messages'] or { json2.Any('') }).as_array()
+	assert msgs.len == 2
+	first := msgs[0].as_map()
+	assert (first['role'] or { json2.Any('') }).str() == 'system'
+	assert (first['content'] or { json2.Any('') }).str() == 'be terse'
 }
 
 fn test_decode_response_text() {
