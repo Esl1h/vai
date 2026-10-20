@@ -31,6 +31,19 @@ fn test_encode_request_system_becomes_leading_message() ! {
 	assert (first['content'] or { json2.Any('') }).str() == 'be terse'
 }
 
+fn test_encode_request_stream_asks_for_usage() ! {
+	mut req := vai.Request{
+		model:    'llama3'
+		messages: [vai.user('hi')]
+	}
+	plain := json2.decode[json2.Any](encode_request(req))!.as_map()
+	assert 'stream_options' !in plain
+	req.stream = true
+	streamed := json2.decode[json2.Any](encode_request(req))!.as_map()
+	opts := (streamed['stream_options'] or { json2.Any('') }).as_map()
+	assert (opts['include_usage'] or { json2.Any(false) }).bool()
+}
+
 fn test_decode_response_text() {
 	raw := '{"id":"chatcmpl-1","model":"llama3","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
 	resp := decode_response(raw) or {

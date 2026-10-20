@@ -24,6 +24,10 @@ pub fn encode_request(req vai.Request) string {
 	}
 	if req.stream {
 		m['stream'] = true
+		// Without this, OpenAI and Ollama send no usage at all on a stream.
+		mut opts := map[string]json2.Any{}
+		opts['include_usage'] = true
+		m['stream_options'] = json2.Any(opts)
 	}
 	return m.str()
 }
