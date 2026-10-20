@@ -18,7 +18,7 @@ v install https://github.com/Esl1h/vai
 - **Cost accounting** (`cost.v`): a real, sourced pricing table for Anthropic's current models (Opus 5, Sonnet 5, Haiku 4.5, Claude Fable 5.1), all four token categories including cache write/read, and a `PriceBook` for adding or overriding prices without forking the module.
 - **Retry** (`retry.v`): which HTTP statuses are worth retrying, and exponential backoff with jitter.
 - **SSE framing** (`sse.v`): a provider-agnostic incremental parser (`SseParser.feed(line)`), because a transport reads a stream one line at a time, not as one complete body.
-- **`local`** (`local/`): reads the session files coding agents already keep on disk for token usage, model, and timing: Claude Code's transcripts (`~/.claude/projects/**/*.jsonl`, subagent transcripts folded into their session), and pi's and omp's (`~/.pi/agent/sessions`, `~/.omp/agent/sessions`, pi's format version 3). Read defensively, since none of these formats is a public contract.
+- **`local`** (`local/`): reads the session files coding agents already keep on disk for token usage, model, and timing: Claude Code's transcripts (`~/.claude/projects/**/*.jsonl`, subagent transcripts folded into their session), and pi's and omp's (`~/.pi/agent/sessions`, `~/.omp/agent/sessions`, pi's format version 3). `vai.local.opencode` reads OpenCode's per-session totals from its SQLite database (`~/.local/share/opencode/opencode.db`), as a module of its own since it links libsqlite3 (`sqlite-devel` or `libsqlite3-dev` at build time). Read defensively, since none of these formats is a public contract.
 - **`anthropic`** (`anthropic/`) and **`openai`** (`openai/`): request encoding, response decoding, and stream-event decoding for each provider's actual wire format. Each is tested against realistic fixtures, not live calls.
 - **Transport** (`transport.v`, `transport_http.v`, `transport_curl.v`): the `Transport` interface, `NativeTransport` (`net.http`, non-streaming only), and `CurlTransport`, which shells out to `curl` for both request kinds and is what makes streaming work at all, since `net.http` has none. Handles the partial-line buffering across non-blocking reads itself, since `os.Process` doesn't give you a line-buffered read.
 - **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` with retry (rate limiting, a momentary server failure, Anthropic's 529, respecting the server's own `Retry-After` header), and `stream(req) !chan vai.StreamEvent`, where a non-2xx answer or a curl failure (connection refused, a stalled stream) ends the stream with one `.error` event carrying the provider's message. Both tested against a local mock server, `complete()`'s retry path with a fake 429-then-succeed handler, `stream()` end-to-end through a real `curl` subprocess parsing a real SSE body.
@@ -28,7 +28,7 @@ v install https://github.com/Esl1h/vai
 - **`Provider.count_tokens()`** and **`Provider.models()`**. Nothing calls either endpoint yet.
 - **OpenAI-side tool use.** `tools` are sent, but `message.tool_calls` in the answer is not decoded yet: a tool-use reply arrives as empty content with `stop_reason: "tool_calls"`. Anthropic's `tool_use` blocks are decoded.
 - **`stream()` doesn't retry.** `complete()` does; a streaming call that fails before or during the stream is the caller's problem to retry today.
-- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server`, this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. Outside the test suite, `complete()` and `stream()` were run by hand against a local Ollama over both dialects (OpenAI-compatible and Anthropic, with and without a reasoning model), and against OpenCode Go's error paths; never against Anthropic's or OpenAI's own API.
+- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server`, this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. Outside the test suite, `complete()` and `stream()` were run by hand against a local Ollama over both dialects (OpenAI-compatible and Anthropic, with and without a reasoning model), z.AI's GLM Coding Plan over both dialects (`https://api.z.ai/api/coding/paas/v4`, `https://api.z.ai/api/anthropic`), and OpenCode Go's error paths; never against Anthropic's or OpenAI's own API.
 
 ## Usage (what works today)
 
@@ -111,7 +111,7 @@ for s in sessions {
 }
 ```
 
-`local.pi_sessions()` and `local.omp_sessions()` return the same `Session` shape.
+`local.pi_sessions()`, `local.omp_sessions()` and `opencode.sessions()` (`import vai.local.opencode`) return the same `Session` shape.
 
 ## Development
 
