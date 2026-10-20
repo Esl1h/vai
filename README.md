@@ -1,5 +1,7 @@
 # vai
 
+[![CI](https://github.com/Esl1h/vai/actions/workflows/ci.yml/badge.svg)](https://github.com/Esl1h/vai/actions/workflows/ci.yml)
+
 A [V](https://vlang.io) module: one request/response shape, streaming, cost accounting, and retry for Anthropic and OpenAI-compatible LLM APIs. "OpenAI-compatible" covers RouteLLM/Abacus, OpenRouter, Ollama, and LM Studio, since they all speak the same wire format behind a different `base_url`.
 
 This exists because nothing like it does in V today: every tool that wants to call Claude or GPT from V currently hand-rolls JSON encoding, has no streaming story, and gets token cost wrong by skipping the cache-read/cache-write fields. `vai` is the shared foundation meant to sit under `ccstat`, `llmbench`, and `jaid`.
