@@ -4,8 +4,8 @@ import vai
 
 fn test_encode_request_basic() {
 	req := vai.Request{
-		model: 'claude-sonnet-5'
-		messages: [vai.user('hi')]
+		model:      'claude-sonnet-5'
+		messages:   [vai.user('hi')]
 		max_tokens: 1024
 	}
 	out := encode_request(req)
@@ -21,9 +21,9 @@ fn test_encode_request_basic() {
 
 fn test_encode_request_custom_temperature() {
 	req := vai.Request{
-		model: 'claude-sonnet-5'
-		messages: [vai.user('hi')]
-		max_tokens: 1024
+		model:       'claude-sonnet-5'
+		messages:    [vai.user('hi')]
+		max_tokens:  1024
 		temperature: 0.5
 	}
 	out := encode_request(req)
@@ -32,10 +32,10 @@ fn test_encode_request_custom_temperature() {
 
 fn test_encode_request_with_system_and_stream() {
 	req := vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
-		system: 'be terse'
-		stream: true
+		system:   'be terse'
+		stream:   true
 	}
 	out := encode_request(req)
 	assert out.contains('"system":"be terse"')
@@ -97,7 +97,7 @@ fn test_decode_response_tool_use() {
 fn test_decode_stream_event_content_delta() {
 	ev := vai.RawSseEvent{
 		event: 'content_block_delta'
-		data: '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}'
+		data:  '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}'
 	}
 	se := decode_stream_event(ev) or {
 		assert false, 'expected an event'
@@ -136,7 +136,7 @@ fn test_decode_stream_event_usage_from_message_start() {
 	// cache counts (verified against the streaming docs' examples).
 	ev := vai.RawSseEvent{
 		event: 'message_start'
-		data: '{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-opus-5","usage":{"input_tokens":2679,"cache_creation_input_tokens":10,"cache_read_input_tokens":20,"output_tokens":3}}}'
+		data:  '{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-opus-5","usage":{"input_tokens":2679,"cache_creation_input_tokens":10,"cache_read_input_tokens":20,"output_tokens":3}}}'
 	}
 	se := decode_stream_event(ev) or {
 		assert false, 'expected a usage event'
@@ -196,9 +196,9 @@ fn test_thinking_block_roundtrips_with_signature() {
 		assert false, 'expected Thinking'
 	}
 	req := vai.Request{
-		model: 'claude-sonnet-5'
-		messages: [vai.Message{
-			role: .assistant
+		model:      'claude-sonnet-5'
+		messages:   [vai.Message{
+			role:    .assistant
 			content: resp.content
 		}]
 		max_tokens: 64
@@ -223,9 +223,9 @@ fn test_redacted_thinking_block_roundtrips() {
 		assert false, 'expected RedactedThinking'
 	}
 	req := vai.Request{
-		model: 'claude-sonnet-5'
-		messages: [vai.Message{
-			role: .assistant
+		model:      'claude-sonnet-5'
+		messages:   [vai.Message{
+			role:    .assistant
 			content: resp.content
 		}]
 		max_tokens: 64

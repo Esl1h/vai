@@ -46,10 +46,10 @@ pub fn decode_response(raw string) !vai.Response {
 	}
 
 	return vai.Response{
-		id: id
-		model: model
-		content: content
-		usage: usage
+		id:          id
+		model:       model
+		content:     content
+		usage:       usage
 		stop_reason: stop_reason
 	}
 }
@@ -99,7 +99,7 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 	if usage_val := obj['usage'] {
 		if usage_val is map[string]json2.Any {
 			return vai.StreamEvent{
-				kind: .usage
+				kind:  .usage
 				usage: decode_usage(usage_val)
 			}
 		}

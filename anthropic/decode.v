@@ -26,10 +26,10 @@ pub fn decode_response(raw string) !vai.Response {
 	}
 
 	return vai.Response{
-		id: id
-		model: model
-		content: content
-		usage: usage
+		id:          id
+		model:       model
+		content:     content
+		usage:       usage
 		stop_reason: stop_reason
 	}
 }
@@ -53,7 +53,7 @@ fn decode_content_blocks(v json2.Any) []vai.Content {
 			}
 			'thinking' {
 				out << vai.Content(vai.Thinking{
-					text: (obj['thinking'] or { json2.Any('') }).str()
+					text:      (obj['thinking'] or { json2.Any('') }).str()
 					signature: (obj['signature'] or { json2.Any('') }).str()
 				})
 			}
@@ -64,8 +64,8 @@ fn decode_content_blocks(v json2.Any) []vai.Content {
 			}
 			'tool_use' {
 				out << vai.Content(vai.ToolUse{
-					id: (obj['id'] or { json2.Any('') }).str()
-					name: (obj['name'] or { json2.Any('') }).str()
+					id:    (obj['id'] or { json2.Any('') }).str()
+					name:  (obj['name'] or { json2.Any('') }).str()
 					input: obj['input'] or { json2.null }
 				})
 			}
@@ -136,7 +136,7 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 				return none
 			}
 			return vai.StreamEvent{
-				kind: .usage
+				kind:  .usage
 				usage: decode_usage(usage_val.as_map())
 			}
 		}
@@ -146,7 +146,7 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 				usage = decode_usage(usage_val.as_map())
 			}
 			return vai.StreamEvent{
-				kind: .usage
+				kind:  .usage
 				usage: usage
 			}
 		}
@@ -166,7 +166,7 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 			}
 			return vai.StreamEvent{
 				kind: .error
-				err: msg
+				err:  msg
 			}
 		}
 		else {

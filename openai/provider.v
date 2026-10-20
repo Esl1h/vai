@@ -88,7 +88,7 @@ pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
 	url := '${p.base_url}/chat/completions'
 
 	raw_ch := p.transport.post_stream(url, headers, body)!
-	out := chan vai.StreamEvent{ cap: 32 }
+	out := chan vai.StreamEvent{cap: 32}
 	spawn pump_openai_events(raw_ch, out)
 	return out
 }

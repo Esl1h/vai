@@ -16,8 +16,8 @@ fn (h StreamHandler) handle(_ http.Request) http.Response {
 
 fn test_provider_stream_end_to_end() {
 	mut server := &http.Server{
-		addr: '127.0.0.1:18361'
-		handler: StreamHandler{}
+		addr:                 '127.0.0.1:18361'
+		handler:              StreamHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()
@@ -27,12 +27,12 @@ fn test_provider_stream_end_to_end() {
 	}
 
 	p := Provider{
-		api_key: 'test-key'
-		base_url: 'http://127.0.0.1:18361'
+		api_key:   'test-key'
+		base_url:  'http://127.0.0.1:18361'
 		transport: vai.Transport(vai.CurlTransport{})
 	}
 	ch := p.stream(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()

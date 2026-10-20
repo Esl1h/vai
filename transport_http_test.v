@@ -36,8 +36,8 @@ fn (h SlowHandler) handle(_ http.Request) http.Response {
 
 fn start_test_server(addr string) &http.Server {
 	mut server := &http.Server{
-		addr: addr
-		handler: EchoHandler{}
+		addr:                 addr
+		handler:              EchoHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()
@@ -86,8 +86,8 @@ fn test_native_transport_default_timeout_is_longer_than_net_http() {
 
 fn test_native_transport_post_json_honors_timeout() {
 	mut server := &http.Server{
-		addr: '127.0.0.1:18323'
-		handler: SlowHandler{}
+		addr:                 '127.0.0.1:18323'
+		handler:              SlowHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()

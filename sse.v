@@ -32,8 +32,8 @@ pub fn (mut p SseParser) feed(line string) ?RawSseEvent {
 		}
 		ev := RawSseEvent{
 			event: p.event
-			data: p.data_lines.join('\n')
-			id: p.id
+			data:  p.data_lines.join('\n')
+			id:    p.id
 		}
 		p.event = ''
 		p.data_lines = []string{}

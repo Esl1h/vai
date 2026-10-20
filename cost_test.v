@@ -2,10 +2,10 @@ module vai
 
 fn test_cost_known_model() {
 	u := Usage{
-		input_tokens: 1_000_000
-		output_tokens: 1_000_000
+		input_tokens:       1_000_000
+		output_tokens:      1_000_000
 		cache_write_tokens: 1_000_000
-		cache_read_tokens: 1_000_000
+		cache_read_tokens:  1_000_000
 	}
 	c := cost('claude-sonnet-5', u)
 	assert !c.unknown

@@ -17,7 +17,7 @@ fn test_retryable_status() {
 fn test_backoff_delay_grows_and_is_capped() {
 	p := RetryPolicy{
 		base_delay: 100 * time.millisecond
-		max_delay: 1 * time.second
+		max_delay:  1 * time.second
 	}
 	d0 := p.backoff_delay(0)
 	d5 := p.backoff_delay(5)
@@ -31,7 +31,7 @@ fn test_backoff_delay_grows_and_is_capped() {
 fn test_backoff_delay_does_not_overflow_on_large_attempt() {
 	p := RetryPolicy{
 		base_delay: 100 * time.millisecond
-		max_delay: 1 * time.second
+		max_delay:  1 * time.second
 	}
 	d := p.backoff_delay(1000)
 	assert d >= 0

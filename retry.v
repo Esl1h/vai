@@ -12,7 +12,7 @@ pub fn retryable_status(code int) bool {
 
 pub struct RetryPolicy {
 pub:
-	max_attempts int = 5
+	max_attempts int           = 5
 	base_delay   time.Duration = 500 * time.millisecond
 	max_delay    time.Duration = 30 * time.second
 }

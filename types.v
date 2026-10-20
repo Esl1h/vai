@@ -69,7 +69,7 @@ pub:
 // user builds a plain-text user message, the common case.
 pub fn user(text string) Message {
 	return Message{
-		role: .user
+		role:    .user
 		content: [Content(TextContent{ text: text })]
 	}
 }
@@ -77,7 +77,7 @@ pub fn user(text string) Message {
 // assistant builds a plain-text assistant message, for few-shot examples.
 pub fn assistant(text string) Message {
 	return Message{
-		role: .assistant
+		role:    .assistant
 		content: [Content(TextContent{ text: text })]
 	}
 }

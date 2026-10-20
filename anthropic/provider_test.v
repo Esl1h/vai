@@ -47,9 +47,9 @@ fn (h SlowHandler) handle(_ http.Request) http.Response {
 
 fn start_mock(addr string, fail_times int, fail_status int) &http.Server {
 	mut server := &http.Server{
-		addr: addr
-		handler: MockHandler{
-			fail_times: fail_times
+		addr:                 addr
+		handler:              MockHandler{
+			fail_times:  fail_times
 			fail_status: fail_status
 		}
 		show_startup_message: false
@@ -66,11 +66,11 @@ fn test_provider_complete_success() {
 	}
 
 	p := Provider{
-		api_key: 'test-key'
+		api_key:  'test-key'
 		base_url: 'http://127.0.0.1:18331'
 	}
 	resp := p.complete(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()
@@ -87,16 +87,16 @@ fn test_provider_complete_retries_then_succeeds() {
 	}
 
 	p := Provider{
-		api_key: 'test-key'
+		api_key:  'test-key'
 		base_url: 'http://127.0.0.1:18332'
-		retry: vai.RetryPolicy{
+		retry:    vai.RetryPolicy{
 			max_attempts: 5
-			base_delay: 5 * time.millisecond
-			max_delay: 20 * time.millisecond
+			base_delay:   5 * time.millisecond
+			max_delay:    20 * time.millisecond
 		}
 	}
 	resp := p.complete(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()
@@ -112,11 +112,11 @@ fn test_provider_complete_does_not_retry_non_retryable_status() {
 	}
 
 	p := Provider{
-		api_key: 'test-key'
+		api_key:  'test-key'
 		base_url: 'http://127.0.0.1:18333'
 	}
 	if _ := p.complete(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) {
 		assert false, 'expected an error'
@@ -125,8 +125,8 @@ fn test_provider_complete_does_not_retry_non_retryable_status() {
 
 fn test_provider_complete_sets_latency_ms() {
 	mut server := &http.Server{
-		addr: '127.0.0.1:18336'
-		handler: SlowHandler{}
+		addr:                 '127.0.0.1:18336'
+		handler:              SlowHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()
@@ -136,11 +136,11 @@ fn test_provider_complete_sets_latency_ms() {
 	}
 
 	p := Provider{
-		api_key: 'test-key'
+		api_key:  'test-key'
 		base_url: 'http://127.0.0.1:18336'
 	}
 	resp := p.complete(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()
@@ -158,19 +158,19 @@ fn test_provider_complete_sets_latency_ms() {
 // instead of an error, which made this failure mode skip retry entirely.
 fn test_provider_complete_retries_transport_failure() {
 	p := Provider{
-		api_key: 'test-key'
-		base_url: 'http://127.0.0.1:1'
+		api_key:   'test-key'
+		base_url:  'http://127.0.0.1:1'
 		transport: vai.Transport(vai.CurlTransport{
 			connect_timeout_secs: 1
 		})
-		retry: vai.RetryPolicy{
+		retry:     vai.RetryPolicy{
 			max_attempts: 2
-			base_delay: 30 * time.millisecond
-			max_delay: 50 * time.millisecond
+			base_delay:   30 * time.millisecond
+			max_delay:    50 * time.millisecond
 		}
 	}
 	if _ := p.complete(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) {
 		assert false, 'expected an error'
@@ -186,16 +186,16 @@ fn test_provider_complete_gives_up_after_max_attempts() {
 	}
 
 	p := Provider{
-		api_key: 'test-key'
+		api_key:  'test-key'
 		base_url: 'http://127.0.0.1:18334'
-		retry: vai.RetryPolicy{
+		retry:    vai.RetryPolicy{
 			max_attempts: 2
-			base_delay: 5 * time.millisecond
-			max_delay: 10 * time.millisecond
+			base_delay:   5 * time.millisecond
+			max_delay:    10 * time.millisecond
 		}
 	}
 	if _ := p.complete(vai.Request{
-		model: 'claude-sonnet-5'
+		model:    'claude-sonnet-5'
 		messages: [vai.user('hi')]
 	}) {
 		assert false, 'expected an error'

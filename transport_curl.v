@@ -81,7 +81,7 @@ pub fn (t CurlTransport) post_json(url string, headers map[string]string, body s
 	}
 	return HttpResponse{
 		status: status
-		body: out[..idx]
+		body:   out[..idx]
 	}
 }
 
@@ -104,7 +104,7 @@ pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body
 	p.run()
 	feed_body(mut p, body)
 
-	ch := chan RawSseEvent{ cap: 32 }
+	ch := chan RawSseEvent{cap: 32}
 	spawn pump_curl_stdout(mut p, ch)
 	return ch
 }

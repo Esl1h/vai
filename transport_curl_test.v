@@ -29,8 +29,8 @@ fn (h BodyLenHandler) handle(req http.Request) http.Response {
 
 fn start_sse_server(addr string) &http.Server {
 	mut server := &http.Server{
-		addr: addr
-		handler: SseHandler{}
+		addr:                 addr
+		handler:              SseHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()
@@ -57,8 +57,8 @@ fn test_curl_transport_post_json_body_larger_than_one_argv() {
 	// Linux caps one argv string at 128 KB; the body has to go through
 	// curl's stdin for anything bigger (a whole file, a journal window).
 	mut server := &http.Server{
-		addr: '127.0.0.1:18353'
-		handler: BodyLenHandler{}
+		addr:                 '127.0.0.1:18353'
+		handler:              BodyLenHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()

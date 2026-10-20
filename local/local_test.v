@@ -9,7 +9,7 @@ const fixture_session_1 = '{"type":"user","sessionId":"s1","cwd":"/home/esli/GIT
 {"type":"assistant","sessionId":"s1","cwd":"/home/esli/GIT/redact","timestamp":"2026-09-06T01:02:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":150,"output_tokens":40}}}
 '
 
-fn with_fixture(fn_ fn(root string) !) ! {
+fn with_fixture(fn_ fn (root string) !) ! {
 	root := os.join_path(os.temp_dir(), 'vai_local_test_${rand_suffix()}')
 	proj := os.join_path(root, '-home-esli-GIT-redact')
 	os.mkdir_all(proj)!

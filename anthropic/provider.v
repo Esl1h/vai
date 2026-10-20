@@ -7,8 +7,8 @@ import vai
 pub struct Provider {
 pub:
 	api_key   string
-	base_url  string = 'https://api.anthropic.com'
-	version   string = '2023-06-01'
+	base_url  string        = 'https://api.anthropic.com'
+	version   string        = '2023-06-01'
 	transport vai.Transport = vai.Transport(vai.NativeTransport{})
 	retry     vai.RetryPolicy
 }
@@ -87,7 +87,7 @@ pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
 	url := '${p.base_url}/v1/messages'
 
 	raw_ch := p.transport.post_stream(url, headers, body)!
-	out := chan vai.StreamEvent{ cap: 32 }
+	out := chan vai.StreamEvent{cap: 32}
 	spawn pump_anthropic_events(raw_ch, out)
 	return out
 }

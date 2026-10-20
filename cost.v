@@ -33,28 +33,28 @@ const tokens_per_unit = 1_000_000.0
 // rather than silently returning zero.
 const default_pricing = {
 	'claude-opus-5':    ModelPrice{
-		input: 5.00
-		output: 25.00
+		input:       5.00
+		output:      25.00
 		cache_write: 6.25
-		cache_read: 0.50
+		cache_read:  0.50
 	}
 	'claude-sonnet-5':  ModelPrice{
-		input: 2.00
-		output: 10.00
+		input:       2.00
+		output:      10.00
 		cache_write: 2.50
-		cache_read: 0.20
+		cache_read:  0.20
 	}
 	'claude-haiku-4-5': ModelPrice{
-		input: 1.00
-		output: 5.00
+		input:       1.00
+		output:      5.00
 		cache_write: 1.25
-		cache_read: 0.10
+		cache_read:  0.10
 	}
 	'claude-fable-5-1': ModelPrice{
-		input: 10.00
-		output: 50.00
+		input:       10.00
+		output:      50.00
 		cache_write: 12.50
-		cache_read: 0.25
+		cache_read:  0.25
 	}
 }
 
@@ -85,9 +85,9 @@ pub fn (pb PriceBook) cost(model string, u Usage) Cost {
 
 fn price_usage(price ModelPrice, u Usage) Cost {
 	return Cost{
-		input: f64(u.input_tokens) / tokens_per_unit * price.input
+		input:  f64(u.input_tokens) / tokens_per_unit * price.input
 		output: f64(u.output_tokens) / tokens_per_unit * price.output
-		write: f64(u.cache_write_tokens) / tokens_per_unit * price.cache_write
+		write:  f64(u.cache_write_tokens) / tokens_per_unit * price.cache_write
 		cached: f64(u.cache_read_tokens) / tokens_per_unit * price.cache_read
 	}
 }

@@ -27,8 +27,8 @@ pub fn (t NativeTransport) post_json(url string, headers map[string]string, body
 	req.header.add_custom_map(headers)!
 	resp := req.do()!
 	return HttpResponse{
-		status: resp.status_code
-		body: resp.body
+		status:      resp.status_code
+		body:        resp.body
 		retry_after: resp.header.get(.retry_after) or { '' }
 	}
 }

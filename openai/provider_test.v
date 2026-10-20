@@ -43,9 +43,9 @@ fn (h SlowHandler) handle(_ http.Request) http.Response {
 
 fn start_mock(addr string, fail_times int, fail_status int) &http.Server {
 	mut server := &http.Server{
-		addr: addr
-		handler: MockHandler{
-			fail_times: fail_times
+		addr:                 addr
+		handler:              MockHandler{
+			fail_times:  fail_times
 			fail_status: fail_status
 		}
 		show_startup_message: false
@@ -65,7 +65,7 @@ fn test_provider_complete_success() {
 		base_url: 'http://127.0.0.1:18341'
 	}
 	resp := p.complete(vai.Request{
-		model: 'llama3'
+		model:    'llama3'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()
@@ -83,14 +83,14 @@ fn test_provider_complete_retries_then_succeeds() {
 
 	p := Provider{
 		base_url: 'http://127.0.0.1:18342'
-		retry: vai.RetryPolicy{
+		retry:    vai.RetryPolicy{
 			max_attempts: 5
-			base_delay: 5 * time.millisecond
-			max_delay: 20 * time.millisecond
+			base_delay:   5 * time.millisecond
+			max_delay:    20 * time.millisecond
 		}
 	}
 	resp := p.complete(vai.Request{
-		model: 'llama3'
+		model:    'llama3'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()
@@ -101,8 +101,8 @@ fn test_provider_complete_retries_then_succeeds() {
 
 fn test_provider_complete_sets_latency_ms() {
 	mut server := &http.Server{
-		addr: '127.0.0.1:18344'
-		handler: SlowHandler{}
+		addr:                 '127.0.0.1:18344'
+		handler:              SlowHandler{}
 		show_startup_message: false
 	}
 	spawn server.listen_and_serve()
@@ -115,7 +115,7 @@ fn test_provider_complete_sets_latency_ms() {
 		base_url: 'http://127.0.0.1:18344'
 	}
 	resp := p.complete(vai.Request{
-		model: 'llama3'
+		model:    'llama3'
 		messages: [vai.user('hi')]
 	}) or {
 		assert false, err.msg()
@@ -133,18 +133,18 @@ fn test_provider_complete_sets_latency_ms() {
 // instead of an error, which made this failure mode skip retry entirely.
 fn test_provider_complete_retries_transport_failure() {
 	p := Provider{
-		base_url: 'http://127.0.0.1:1'
+		base_url:  'http://127.0.0.1:1'
 		transport: vai.Transport(vai.CurlTransport{
 			connect_timeout_secs: 1
 		})
-		retry: vai.RetryPolicy{
+		retry:     vai.RetryPolicy{
 			max_attempts: 2
-			base_delay: 30 * time.millisecond
-			max_delay: 50 * time.millisecond
+			base_delay:   30 * time.millisecond
+			max_delay:    50 * time.millisecond
 		}
 	}
 	if _ := p.complete(vai.Request{
-		model: 'llama3'
+		model:    'llama3'
 		messages: [vai.user('hi')]
 	}) {
 		assert false, 'expected an error'
@@ -163,7 +163,7 @@ fn test_provider_complete_does_not_retry_non_retryable_status() {
 		base_url: 'http://127.0.0.1:18343'
 	}
 	if _ := p.complete(vai.Request{
-		model: 'llama3'
+		model:    'llama3'
 		messages: [vai.user('hi')]
 	}) {
 		assert false, 'expected an error'

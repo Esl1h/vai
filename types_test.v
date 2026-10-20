@@ -14,10 +14,10 @@ fn test_user_and_assistant_helpers() {
 
 fn test_usage_total_tokens() {
 	u := Usage{
-		input_tokens: 10
-		output_tokens: 5
+		input_tokens:       10
+		output_tokens:      5
 		cache_write_tokens: 2
-		cache_read_tokens: 3
+		cache_read_tokens:  3
 	}
 	assert u.total_tokens() == 20
 }
