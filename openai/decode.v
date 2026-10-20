@@ -27,11 +27,17 @@ pub fn decode_response(raw string) !vai.Response {
 					if msg_val is map[string]json2.Any {
 						// "content": null is what a tool_calls answer carries;
 						// Any.str() would decode it as the text "null".
+						reasoning := reasoning_text(msg_val)
+						if reasoning != '' {
+							content << vai.Content(vai.Thinking{
+								text: reasoning
+							})
+						}
 						if text_val := msg_val['content'] {
 							if text_val is string {
-								content = [
-									vai.Content(vai.TextContent{ text: text_val }),
-								]
+								content << vai.Content(vai.TextContent{
+									text: text_val
+								})
 							}
 						}
 					}
@@ -52,6 +58,21 @@ pub fn decode_response(raw string) !vai.Response {
 		usage:       usage
 		stop_reason: stop_reason
 	}
+}
+
+// reasoning_text returns a message's or a stream delta's reasoning, which
+// OpenAI-compatible servers put outside "content" under one of two
+// names: "reasoning" (Ollama, OpenRouter) or "reasoning_content"
+// (DeepSeek, vLLM). Empty when neither is a non-empty string.
+fn reasoning_text(obj map[string]json2.Any) string {
+	for key in ['reasoning', 'reasoning_content'] {
+		if v := obj[key] {
+			if v is string && v != '' {
+				return v
+			}
+		}
+	}
+	return ''
 }
 
 // decode_usage maps OpenAI's field names onto vai.Usage. Cache accounting
@@ -113,19 +134,25 @@ pub fn decode_stream_event(raw vai.RawSseEvent) ?vai.StreamEvent {
 	first := choices[0].as_map()
 	delta_val := first['delta'] or { return none }
 	delta := delta_val.as_map()
-	text_val := delta['content'] or { return none }
 	// Reasoning models and some servers (vLLM, OpenRouter) send
 	// "content": null on chunks that carry no text; Any.str() would turn
 	// that into the literal word null in the output.
-	if text_val !is string {
-		return none
+	if text_val := delta['content'] {
+		if text_val is string && text_val != '' {
+			return vai.StreamEvent{
+				kind: .content_delta
+				text: text_val
+			}
+		}
 	}
-	text := text_val.str()
-	if text == '' {
-		return none
+	// One event per chunk: if a server ever packs both into one delta,
+	// the answer text above wins over the reasoning.
+	reasoning := reasoning_text(delta)
+	if reasoning != '' {
+		return vai.StreamEvent{
+			kind: .thinking_delta
+			text: reasoning
+		}
 	}
-	return vai.StreamEvent{
-		kind: .content_delta
-		text: text
-	}
+	return none
 }

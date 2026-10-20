@@ -60,16 +60,20 @@ fn role_str(r vai.Role) string {
 // encode_content collapses to a plain string when the message is
 // text-only, which is what every OpenAI-compatible server expects for the
 // common case; it only builds the multi-part array form when there is
-// something else (an image) to carry alongside the text.
+// something else (an image) to carry alongside the text. Thinking blocks
+// have no request form here and are dropped first, so a decoded reply
+// that carried reasoning still collapses to a string when sent back as
+// history.
 fn encode_content(blocks []vai.Content) json2.Any {
-	if blocks.len == 1 {
-		first := blocks[0]
+	sendable := blocks.filter(it !is vai.Thinking && it !is vai.RedactedThinking)
+	if sendable.len == 1 {
+		first := sendable[0]
 		if first is vai.TextContent {
 			return json2.Any(first.text)
 		}
 	}
 	mut arr := []json2.Any{}
-	for b in blocks {
+	for b in sendable {
 		match b {
 			vai.TextContent {
 				mut part := map[string]json2.Any{}

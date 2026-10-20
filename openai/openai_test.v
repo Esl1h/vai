@@ -124,15 +124,91 @@ fn test_decode_response_null_content_is_not_the_text_null() {
 	assert resp.stop_reason == 'tool_calls'
 }
 
-fn test_decode_stream_event_ignores_null_content_delta() {
+fn test_decode_stream_event_null_content_with_reasoning_is_thinking() {
 	// Reasoning models stream chunks with "content": null next to a
-	// reasoning field; those must not surface as a "null" text delta.
+	// reasoning field; that is a thinking delta, never a "null" text one.
 	ev := vai.RawSseEvent{
 		data: '{"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":"hmm"},"finish_reason":null}]}'
+	}
+	got := decode_stream_event(ev) or {
+		assert false, 'expected a thinking delta'
+		return
+	}
+	assert got.kind == .thinking_delta
+	assert got.text == 'hmm'
+}
+
+fn test_decode_stream_event_ignores_null_content_delta() {
+	ev := vai.RawSseEvent{
+		data: '{"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":null},"finish_reason":null}]}'
 	}
 	if _ := decode_stream_event(ev) {
 		assert false, 'expected none for a null content delta'
 	}
+}
+
+fn test_decode_stream_event_ollama_reasoning_delta() {
+	ev := vai.RawSseEvent{
+		data: '{"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"The user"},"finish_reason":null}]}'
+	}
+	got := decode_stream_event(ev) or {
+		assert false, 'expected a thinking delta'
+		return
+	}
+	assert got.kind == .thinking_delta
+	assert got.text == 'The user'
+}
+
+fn test_decode_stream_event_text_wins_over_reasoning() {
+	ev := vai.RawSseEvent{
+		data: '{"id":"1","choices":[{"index":0,"delta":{"content":"Four.","reasoning":"tail"},"finish_reason":null}]}'
+	}
+	got := decode_stream_event(ev) or {
+		assert false, 'expected a content delta'
+		return
+	}
+	assert got.kind == .content_delta
+	assert got.text == 'Four.'
+}
+
+fn test_decode_response_reasoning_becomes_thinking() {
+	// Ollama's shape; DeepSeek and vLLM use reasoning_content instead.
+	for field in ['reasoning', 'reasoning_content'] {
+		raw := '{"id":"c1","model":"qwen3.8:27b","choices":[{"index":0,"message":{"role":"assistant","content":"Four.","${field}":"2+2 is 4"},"finish_reason":"stop"}]}'
+		resp := decode_response(raw) or {
+			assert false, err.msg()
+			return
+		}
+		assert resp.content.len == 2
+		first := resp.content[0]
+		assert first is vai.Thinking
+		if first is vai.Thinking {
+			assert first.text == '2+2 is 4'
+		}
+		second := resp.content[1]
+		assert second is vai.TextContent
+	}
+}
+
+fn test_encode_request_drops_thinking_from_history() {
+	req := vai.Request{
+		model:    'qwen3.8:27b'
+		messages: [
+			vai.user('2+2?'),
+			vai.Message{
+				role:    .assistant
+				content: [vai.Content(vai.Thinking{
+					text: '2+2 is 4'
+				}), vai.Content(vai.TextContent{
+					text: 'Four.'
+				})]
+			},
+			vai.user('and 3+3?'),
+		]
+	}
+	out := encode_request(req)
+	assert out.contains('"content":"Four."')
+	assert !out.contains('2+2 is 4')
 }
 
 fn test_decode_stream_event_ignores_empty_delta() {
