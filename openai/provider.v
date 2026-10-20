@@ -86,12 +86,9 @@ pub fn (p Provider) complete(req vai.Request) !vai.Response {
 // vai.StreamEvent values on the returned channel, closed once the
 // underlying transport's raw SSE channel closes.
 //
-// Known gap: unlike complete(), stream does not retry and does not see
-// the HTTP status of the request at all, Transport.post_stream returns
-// only a channel, no status code. A non-2xx error response gets its body
-// fed to the SSE parser like any other line and most likely produces zero
-// events rather than a clear error. Fixing this needs a Transport
-// interface change that hasn't been done yet.
+// A non-2xx answer or a transport failure arrives as one last .error
+// event (with CurlTransport, which reports both). Unlike complete(),
+// stream does not retry.
 pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
 	mut streaming_req := req
 	streaming_req.stream = true
@@ -111,6 +108,19 @@ fn pump_openai_events(raw_ch chan vai.RawSseEvent, out chan vai.StreamEvent) {
 	sw := time.new_stopwatch()
 	for {
 		raw := <-raw_ch or { break }
+		if raw.status != 0 || raw.err != '' {
+			msg := if raw.status != 0 {
+				'HTTP ${raw.status}: ${extract_error_message(raw.data)}'
+			} else {
+				'transport error: ${raw.err}'
+			}
+			out <- vai.StreamEvent{
+				kind:  .error
+				err:   'openai: ${msg}'
+				at_ms: sw.elapsed().milliseconds()
+			}
+			continue
+		}
 		if ev := decode_stream_event(raw) {
 			out <- vai.StreamEvent{
 				...ev

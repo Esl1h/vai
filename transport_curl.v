@@ -98,6 +98,10 @@ pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body
 	args << '1'
 	args << '--speed-time'
 	args << '${t.stall_timeout_secs}'
+	// The status only exists once curl is done, so it goes to stderr,
+	// apart from the event stream, for pump_curl_stdout to read at exit.
+	args << '-w'
+	args << '%{stderr}\n${curl_status_marker}%{http_code}\n'
 	mut p := os.new_process('curl')
 	p.set_args(args)
 	p.set_redirect_stdio()
@@ -109,9 +113,21 @@ pub fn (t CurlTransport) post_stream(url string, headers map[string]string, body
 	return ch
 }
 
+const curl_status_marker = 'vai-http-status:'
+
+// max_error_body caps how much of a non-SSE answer is kept for the error
+// event: enough for any JSON error body, bounded for a server that
+// answers with something huge.
+const max_error_body = 65536
+
 fn pump_curl_stdout(mut p os.Process, ch chan RawSseEvent) {
 	mut parser := SseParser{}
 	mut buf := ''
+	// Lines seen before the first event: an error answer is a plain JSON
+	// body, not an event stream, so this is the only place it survives.
+	mut preamble := []string{}
+	mut preamble_len := 0
+	mut sent := 0
 	for {
 		// Liveness is sampled before the read on purpose: if curl writes
 		// its last bytes and exits between the two calls, the read still
@@ -125,8 +141,13 @@ fn pump_curl_stdout(mut p os.Process, ch chan RawSseEvent) {
 				nl_pos := buf.index('\n') or { break }
 				line := buf[..nl_pos].trim_string_right('\r')
 				buf = buf[nl_pos + 1..]
+				if sent == 0 && preamble_len < max_error_body {
+					preamble << line
+					preamble_len += line.len + 1
+				}
 				if ev := parser.feed(line) {
 					ch <- ev
+					sent++
 				}
 			}
 			continue
@@ -141,15 +162,59 @@ fn pump_curl_stdout(mut p os.Process, ch chan RawSseEvent) {
 	// last event, can both be missing if the connection just closed ,
 	// flush whatever is left through the parser so nothing is dropped.
 	if buf != '' {
-		if ev := parser.feed(buf.trim_string_right('\r')) {
+		tail := buf.trim_string_right('\r')
+		if sent == 0 && preamble_len < max_error_body {
+			preamble << tail
+		}
+		if ev := parser.feed(tail) {
 			ch <- ev
+			sent++
 		}
 	}
 	if ev := parser.feed('') {
 		ch <- ev
+		sent++
 	}
 
+	err_out := p.stderr_slurp()
 	p.wait()
+	exit_code := p.code
 	p.close()
+	if ev := curl_outcome(err_out, exit_code, preamble.join('\n'), sent) {
+		ch <- ev
+	}
 	ch.close()
+}
+
+// curl_outcome turns how curl ended into the synthetic last event, or
+// none for a 2xx stream that curl finished cleanly. The body is only
+// attached when no event got through: an error answer is a plain JSON
+// body, so lines read after a real event can't be one.
+fn curl_outcome(stderr string, exit_code int, preamble string, sent int) ?RawSseEvent {
+	mut status := 0
+	mut messages := []string{}
+	for line in stderr.split_into_lines() {
+		if line.starts_with(curl_status_marker) {
+			status = line.all_after(curl_status_marker).trim_space().int()
+		} else if line.trim_space() != '' {
+			messages << line.trim_space()
+		}
+	}
+	if status >= 300 {
+		return RawSseEvent{
+			status: status
+			data:   if sent == 0 { preamble.trim_space() } else { '' }
+		}
+	}
+	if exit_code != 0 || status == 0 {
+		detail := if messages.len > 0 {
+			messages.join('; ')
+		} else {
+			'curl exited with code ${exit_code}'
+		}
+		return RawSseEvent{
+			err: detail
+		}
+	}
+	return none
 }

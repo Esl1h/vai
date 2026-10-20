@@ -8,6 +8,12 @@ pub:
 	event string
 	data  string
 	id    string
+	// status and err never come from SseParser. A transport sets one of
+	// them on a last, synthetic event to report what the event stream
+	// itself can't: status is a non-2xx HTTP answer, with its body in
+	// data; err is a transport failure (connection refused, a stall).
+	status int
+	err    string
 }
 
 // SseParser turns a stream of lines into RawSseEvent values. It exists

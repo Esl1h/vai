@@ -21,7 +21,9 @@ pub:
 // Transport is the one seam vai has for actually reaching a provider.
 // post_stream returns raw, provider-agnostic SSE frames: turning those
 // into vai.StreamEvent is a provider's job (see anthropic.decode_stream_event,
-// openai.decode_stream_event), not the transport's.
+// openai.decode_stream_event), not the transport's. A transport that
+// learns the request failed (a non-2xx status, a dropped connection)
+// says so with one last RawSseEvent carrying status or err.
 //
 // There are two implementations for a reason, not by accident: V's own
 // net.http has no streaming response support, so NativeTransport (net.http)

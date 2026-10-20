@@ -101,3 +101,82 @@ fn test_curl_transport_post_stream() {
 	assert events[1].data.contains('"text":"Hi"')
 	assert events[2].event == 'message_stop'
 }
+
+// RateLimitHandler answers like a provider refusing a stream: a plain
+// JSON error body with a 429, not an event stream.
+struct RateLimitHandler {}
+
+fn (h RateLimitHandler) handle(_ http.Request) http.Response {
+	mut r := http.Response{
+		body: '{"error":{"type":"rate_limit_error","message":"slow down"}}'
+	}
+	r.set_status(.too_many_requests)
+	return r
+}
+
+fn collect(ch chan RawSseEvent) []RawSseEvent {
+	mut events := []RawSseEvent{}
+	for {
+		ev := <-ch or { break }
+		events << ev
+	}
+	return events
+}
+
+fn test_curl_transport_post_stream_reports_http_error() {
+	mut server := &http.Server{
+		addr:                 '127.0.0.1:18354'
+		handler:              RateLimitHandler{}
+		show_startup_message: false
+	}
+	spawn server.listen_and_serve()
+	server.wait_till_running() or { panic(err) }
+	defer {
+		server.close()
+	}
+
+	ch := CurlTransport{}.post_stream('http://127.0.0.1:18354/', {}, '{}') or {
+		assert false, err.msg()
+		return
+	}
+	events := collect(ch)
+	assert events.len == 1
+	assert events[0].status == 429
+	assert events[0].data.contains('slow down')
+	assert events[0].err == ''
+}
+
+fn test_curl_transport_post_stream_reports_connection_failure() {
+	// Nothing listens on this port.
+	ch := CurlTransport{
+		connect_timeout_secs: 2
+	}.post_stream('http://127.0.0.1:18355/', {}, '{}') or {
+		assert false, err.msg()
+		return
+	}
+	events := collect(ch)
+	assert events.len == 1
+	assert events[0].status == 0
+	assert events[0].err != ''
+}
+
+fn test_curl_outcome() {
+	ok := '\n${curl_status_marker}200\n'
+	if _ := curl_outcome(ok, 0, '', 3) {
+		assert false, 'a clean 2xx stream needs no extra event'
+	}
+	// A stall after the stream started: status 200, curl exit 28.
+	stalled := curl_outcome('curl: (28) Operation too slow\n${curl_status_marker}200\n', 28,
+		'', 3) or {
+		assert false, 'expected an error event'
+		return
+	}
+	assert stalled.err.contains('too slow')
+	// A non-2xx answer whose body came as events keeps no stale body.
+	late := curl_outcome('\n${curl_status_marker}500\n', 0, 'data: x', 1) or {
+		assert false, 'expected a status event'
+		return
+	}
+	assert late.status == 500
+	assert late.data == ''
+}

@@ -60,3 +60,48 @@ fn test_provider_stream_end_to_end() {
 	}
 	assert events[2].at_ms >= events[0].at_ms
 }
+
+// RejectHandler answers a stream request with a 400 JSON body, the way
+// a gateway refuses a request before any event is sent.
+struct RejectHandler {}
+
+fn (h RejectHandler) handle(_ http.Request) http.Response {
+	mut r := http.Response{
+		body: '{"type":"error","error":{"type":"invalid_request_error","message":"Request is missing x-opencode-session"}}'
+	}
+	r.set_status(.bad_request)
+	return r
+}
+
+fn test_provider_stream_surfaces_http_error() {
+	mut server := &http.Server{
+		addr:                 '127.0.0.1:18373'
+		handler:              RejectHandler{}
+		show_startup_message: false
+	}
+	spawn server.listen_and_serve()
+	server.wait_till_running() or { panic(err) }
+	defer {
+		server.close()
+	}
+
+	p := Provider{
+		base_url:  'http://127.0.0.1:18373'
+		transport: vai.Transport(vai.CurlTransport{})
+	}
+	ch := p.stream(vai.Request{
+		model:    'm'
+		messages: [vai.user('hi')]
+	}) or {
+		assert false, err.msg()
+		return
+	}
+	mut events := []vai.StreamEvent{}
+	for {
+		ev := <-ch or { break }
+		events << ev
+	}
+	assert events.len == 1
+	assert events[0].kind == .error
+	assert events[0].err == 'anthropic: HTTP 400: Request is missing x-opencode-session'
+}
