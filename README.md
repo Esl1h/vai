@@ -28,7 +28,7 @@ v install https://github.com/Esl1h/vai
 - **`Provider.count_tokens()`** and **`Provider.models()`**. Nothing calls either endpoint yet.
 - **OpenAI-side tool use.** `tools` are sent, but `message.tool_calls` in the answer is not decoded yet: a tool-use reply arrives as empty content with `stop_reason: "tool_calls"`. Anthropic's `tool_use` blocks are decoded.
 - **`stream()` doesn't retry.** `complete()` does; a streaming call that fails before or during the stream is the caller's problem to retry today.
-- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server`, this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. `complete()` and `stream()` are wired and tested against a mock, but neither has been run against the real API yet.
+- Any actual call to a live Anthropic or OpenAI-compatible endpoint. Every test here runs against a fixture or a local mock `net.http.Server`, this project follows the same rule as this author's other V projects: tests never send traffic to a real third-party endpoint. Outside the test suite, `complete()` and `stream()` were run by hand against a local Ollama over both dialects (OpenAI-compatible and Anthropic, with and without a reasoning model), and against OpenCode Go's error paths; never against Anthropic's or OpenAI's own API.
 
 ## Usage (what works today)
 
