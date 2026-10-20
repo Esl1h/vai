@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # V master changes often; a weekly run catches breakage between commits.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install V
+        run: |
+          git clone --depth 1 https://github.com/vlang/v "$HOME/v"
+          make -C "$HOME/v"
+          echo "$HOME/v" >> "$GITHUB_PATH"
+      - run: make check
