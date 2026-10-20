@@ -67,3 +67,16 @@ fn test_parse_session_file_skips_unparseable_lines() {
 		assert sessions.len == 1
 	})!
 }
+
+fn test_claude_sessions_ignore_synthetic_model() {
+	with_fixture(fn (root string) ! {
+		proj := os.join_path(root, '-home-esli-GIT-redact')
+		os.write_file(os.join_path(proj, 'session2.jsonl'), '{"type":"assistant","sessionId":"s2","timestamp":"2026-09-06T02:00:00.000Z","message":{"id":"msg_b","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":1}}}
+{"type":"assistant","sessionId":"s2","timestamp":"2026-09-06T02:00:09.000Z","message":{"id":"msg_c","role":"assistant","model":"<synthetic>","usage":{"input_tokens":0,"output_tokens":0}}}
+')!
+		sessions := claude_sessions_from_root(root)!
+		s2 := sessions.filter(it.id == 's2')
+		assert s2.len == 1
+		assert s2[0].model == 'claude-opus-5-5'
+	})!
+}

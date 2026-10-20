@@ -56,6 +56,11 @@ fn find_jsonl_files(dir string) ![]string {
 	return out
 }
 
+// synthetic_model is what Claude Code puts in "model" on messages it
+// writes itself (an interrupted turn, an API error shown inline). Taken
+// as the session's model, it hid the real one whenever it came last.
+const synthetic_model = '<synthetic>'
+
 fn parse_session_file(path string) !Session {
 	lines := os.read_lines(path)!
 
@@ -108,7 +113,10 @@ fn parse_session_file(path string) !Session {
 		msg := msg_val.as_map()
 
 		if model_val := msg['model'] {
-			sess.model = model_val.str()
+			model := model_val.str()
+			if model != synthetic_model {
+				sess.model = model
+			}
 		}
 		if usage_val := msg['usage'] {
 			if id_val := msg['id'] {
