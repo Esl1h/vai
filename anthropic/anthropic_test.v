@@ -11,7 +11,8 @@ fn test_encode_request_basic() {
 	out := encode_request(req)
 	assert out.contains('"model":"claude-sonnet-5"')
 	assert out.contains('"max_tokens":1024')
-	assert out.contains('"temperature":1')
+	// The default is left out: Opus 4.7+ rejects any temperature at all.
+	assert !out.contains('"temperature"')
 	assert out.contains('"role":"user"')
 	assert out.contains('"type":"text"')
 	assert out.contains('"text":"hi"')

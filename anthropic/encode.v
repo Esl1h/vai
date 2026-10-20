@@ -12,10 +12,13 @@ pub fn encode_request(req vai.Request) string {
 	mut m := map[string]json2.Any{}
 	m['model'] = req.model
 	m['max_tokens'] = req.max_tokens
-	// Always sent: the API default is 1.0, thinking models require
-	// exactly 1.0, and there is no way to distinguish "explicitly 1.0"
-	// from the struct default to omit it.
-	m['temperature'] = req.temperature
+	// Omitted at 1.0, the API's own default, so leaving it out means the
+	// same thing. Sending it is not harmless: Opus 4.7 and later (Opus 5,
+	// Opus 5.5, Fable) reject any temperature, even 1.0, with a 400, while
+	// Sonnet 5/5.5 and Haiku 5.5 only reject a non-default value.
+	if req.temperature != 1.0 {
+		m['temperature'] = req.temperature
+	}
 	m['messages'] = encode_messages(req.messages)
 	if req.system != '' {
 		m['system'] = req.system
