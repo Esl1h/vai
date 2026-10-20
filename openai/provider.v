@@ -13,6 +13,28 @@ pub:
 	base_url  string @[required]
 	transport vai.Transport = vai.Transport(vai.NativeTransport{})
 	retry     vai.RetryPolicy
+	// headers are sent on every request, on top of (and overriding) the
+	// ones vai sets itself; names are case-insensitive. Some gateways
+	// need their own, e.g. OpenCode Go routes on x-opencode-session and
+	// rejects a request without it.
+	headers map[string]string
+}
+
+// request_headers is what complete and stream send: vai's own defaults,
+// then p.headers on top, keyed in lower case so an override replaces a
+// default instead of sending the header twice.
+fn (p Provider) request_headers() map[string]string {
+	mut h := {
+		'content-type': 'application/json'
+		'user-agent':   vai.user_agent
+	}
+	if p.api_key != '' {
+		h['authorization'] = 'Bearer ${p.api_key}'
+	}
+	for k, v in p.headers {
+		h[k.to_lower()] = v
+	}
+	return h
 }
 
 // complete sends req and returns the full response, retrying on a
@@ -24,12 +46,7 @@ pub:
 // is sent, falling back to backoff_delay otherwise.
 pub fn (p Provider) complete(req vai.Request) !vai.Response {
 	body := encode_request(req)
-	mut headers := {
-		'content-type': 'application/json'
-	}
-	if p.api_key != '' {
-		headers['authorization'] = 'Bearer ${p.api_key}'
-	}
+	headers := p.request_headers()
 	url := '${p.base_url}/chat/completions'
 
 	sw := time.new_stopwatch()
@@ -79,12 +96,7 @@ pub fn (p Provider) stream(req vai.Request) !chan vai.StreamEvent {
 	mut streaming_req := req
 	streaming_req.stream = true
 	body := encode_request(streaming_req)
-	mut headers := {
-		'content-type': 'application/json'
-	}
-	if p.api_key != '' {
-		headers['authorization'] = 'Bearer ${p.api_key}'
-	}
+	headers := p.request_headers()
 	url := '${p.base_url}/chat/completions'
 
 	raw_ch := p.transport.post_stream(url, headers, body)!

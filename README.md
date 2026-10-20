@@ -65,6 +65,19 @@ resp := p.complete(vai.Request{
 })!
 ```
 
+`headers` adds request headers to either provider, or overrides vai's own (names are case-insensitive). A tool built on vai should name itself in `User-Agent`, the default is `vai/<version>`. [OpenCode Go](https://opencode.ai/docs/go/) also rejects a request without a stable `x-opencode-session` per conversation:
+
+```v
+p := openai.Provider{
+	base_url: 'https://opencode.ai/zen/go/v1'
+	api_key:  os.getenv('OPENCODE_API_KEY')
+	headers:  {
+		'user-agent':         'jaid/0.1.0'
+		'x-opencode-session': session_id
+	}
+}
+```
+
 Streaming needs `CurlTransport` explicitly, the default is `NativeTransport`, which can't stream:
 
 ```v

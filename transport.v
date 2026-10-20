@@ -1,5 +1,11 @@
 module vai
 
+// user_agent is the User-Agent both providers send unless the caller
+// overrides it in Provider.headers. A tool built on vai should send its
+// own name: some gateways (OpenCode Go) ask clients to identify
+// themselves instead of looking like a generic HTTP library.
+pub const user_agent = 'vai/0.1.0'
+
 // HttpResponse is deliberately smaller than what an HTTP client normally
 // returns: callers only ever need the status, the body, and (for retry)
 // the Retry-After header to build a Response or a retry decision out of.

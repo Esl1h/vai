@@ -169,3 +169,28 @@ fn test_provider_complete_does_not_retry_non_retryable_status() {
 		assert false, 'expected an error'
 	}
 }
+
+fn test_request_headers_defaults_and_overrides() {
+	p := Provider{
+		base_url: 'http://localhost'
+		api_key:  'k'
+		headers:  {
+			'X-OpenCode-Session': 's1'
+			'User-Agent':         'jaid/0.1.0'
+		}
+	}
+	h := p.request_headers()
+	assert h['authorization'] == 'Bearer k'
+	assert h['content-type'] == 'application/json'
+	assert h['x-opencode-session'] == 's1'
+	assert h['user-agent'] == 'jaid/0.1.0'
+	assert h.len == 4
+}
+
+fn test_request_headers_default_user_agent() {
+	h := Provider{
+		base_url: 'http://localhost'
+	}.request_headers()
+	assert h['user-agent'] == vai.user_agent
+	assert 'authorization' !in h
+}

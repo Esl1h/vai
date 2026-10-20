@@ -201,3 +201,19 @@ fn test_provider_complete_gives_up_after_max_attempts() {
 		assert false, 'expected an error'
 	}
 }
+
+fn test_request_headers_defaults_and_overrides() {
+	p := Provider{
+		api_key: 'k'
+		headers: {
+			'Anthropic-Beta': 'b1'
+			'User-Agent':     'jaid/0.1.0'
+		}
+	}
+	h := p.request_headers()
+	assert h['x-api-key'] == 'k'
+	assert h['anthropic-version'] == '2023-06-01'
+	assert h['anthropic-beta'] == 'b1'
+	assert h['user-agent'] == 'jaid/0.1.0'
+	assert h.len == 5
+}

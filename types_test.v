@@ -21,3 +21,8 @@ fn test_usage_total_tokens() {
 	}
 	assert u.total_tokens() == 20
 }
+
+fn test_user_agent_matches_vmod_version() {
+	// Bumping v.mod without this constant would ship a stale User-Agent.
+	assert @VMOD_FILE.contains("version: '${user_agent.all_after('vai/')}'")
+}
