@@ -35,12 +35,63 @@ pub fn claude_sessions_from_root(root string) ![]Session {
 	if !os.exists(root) {
 		return []Session{}
 	}
-	mut sessions := []Session{}
+	// A subagent's transcript is a file of its own under
+	// <session>/subagents/, but it carries the parent's sessionId and its
+	// tokens are part of what that session cost, so it is folded into the
+	// parent rather than listed as another session with the same id. Main
+	// transcripts go first so model and project come from the parent.
+	mut main_files := []string{}
+	mut subagent_files := []string{}
+	subagents_dir := '${os.path_separator}subagents${os.path_separator}'
 	for f in find_jsonl_files(root)! {
+		if f.contains(subagents_dir) {
+			subagent_files << f
+		} else {
+			main_files << f
+		}
+	}
+	mut sessions := []Session{}
+	mut index := map[string]int{}
+	for f in main_files {
 		s := parse_session_file(f) or { continue }
-		sessions << s
+		add_session(mut sessions, mut index, s)
+	}
+	for f in subagent_files {
+		s := parse_session_file(f) or { continue }
+		add_session(mut sessions, mut index, s)
 	}
 	return sessions
+}
+
+// add_session appends s, or merges it into the session already listed
+// under the same id: usage adds up, the time span widens, and model and
+// project are only filled in where the earlier file had none.
+fn add_session(mut sessions []Session, mut index map[string]int, s Session) {
+	i := index[s.id] or {
+		index[s.id] = sessions.len
+		sessions << s
+		return
+	}
+	mut cur := sessions[i]
+	cur.usage = vai.Usage{
+		input_tokens:       cur.usage.input_tokens + s.usage.input_tokens
+		output_tokens:      cur.usage.output_tokens + s.usage.output_tokens
+		cache_write_tokens: cur.usage.cache_write_tokens + s.usage.cache_write_tokens
+		cache_read_tokens:  cur.usage.cache_read_tokens + s.usage.cache_read_tokens
+	}
+	if s.started_at.unix() != 0 && (cur.started_at.unix() == 0 || s.started_at < cur.started_at) {
+		cur.started_at = s.started_at
+	}
+	if s.last_msg_at > cur.last_msg_at {
+		cur.last_msg_at = s.last_msg_at
+	}
+	if cur.model == '' {
+		cur.model = s.model
+	}
+	if cur.project_dir == '' {
+		cur.project_dir = s.project_dir
+	}
+	sessions[i] = cur
 }
 
 fn find_jsonl_files(dir string) ![]string {
