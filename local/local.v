@@ -1,4 +1,4 @@
-// Package local reads session state that Claude Code and OpenCode already
+// Package local reads session state that Claude Code, pi and omp already
 // keep on disk, so a tool built on vai doesn't have to reverse-engineer
 // that format itself. The format is undocumented, internal, and changes
 // between CLI versions without notice: every field here is read
@@ -204,6 +204,124 @@ fn accumulate_usage(mut usage vai.Usage, obj map[string]json2.Any) {
 		usage.cache_write_tokens += int(v.f64())
 	}
 	if v := obj['cache_read_input_tokens'] {
+		usage.cache_read_tokens += int(v.f64())
+	}
+}
+
+// pi_sessions reads every session file of the pi coding agent, under
+// $PI_CODING_AGENT_DIR/sessions when pi's own override is set, else
+// ~/.pi/agent/sessions. Empty, not an error, when pi was never run here.
+pub fn pi_sessions() ![]Session {
+	agent_dir := os.getenv_opt('PI_CODING_AGENT_DIR') or {
+		os.join_path(os.home_dir(), '.pi', 'agent')
+	}
+	return pi_sessions_from_root(os.join_path(os.expand_tilde_to_home(agent_dir), 'sessions'))!
+}
+
+// omp_sessions reads every session file of omp (oh-my-pi), a pi fork
+// that kept pi's session format, under ~/.omp/agent/sessions.
+pub fn omp_sessions() ![]Session {
+	return pi_sessions_from_root(os.join_path(os.home_dir(), '.omp', 'agent', 'sessions'))!
+}
+
+// pi_sessions_from_root reads pi-format session files (one JSONL file per
+// session, format version 3) under root, for pi, omp, or a test.
+pub fn pi_sessions_from_root(root string) ![]Session {
+	if !os.exists(root) {
+		return []Session{}
+	}
+	mut sessions := []Session{}
+	for f in find_jsonl_files(root)! {
+		sessions << parse_pi_session_file(f) or { continue }
+	}
+	return sessions
+}
+
+// pi_usage_entries are the entry types whose usage is tokens actually
+// spent: assistant replies ("message"), and the summaries pi makes on its
+// own ("usage", "compaction", "branch_summary"). The file is append-only
+// and every entry is written once, so nothing needs deduplicating; an
+// abandoned branch stays in the file and its tokens were still paid for.
+const pi_usage_entries = ['usage', 'compaction', 'branch_summary']
+
+fn parse_pi_session_file(path string) !Session {
+	mut sess := Session{}
+	mut usage := vai.Usage{}
+	mut seen_any_timestamp := false
+	for line in os.read_lines(path)! {
+		if line.trim_space() == '' {
+			continue
+		}
+		val := json2.decode[json2.Any](line) or { continue }
+		if val !is map[string]json2.Any {
+			continue
+		}
+		obj := val.as_map()
+		kind := (obj['type'] or { json2.Any('') }).str()
+
+		if ts_val := obj['timestamp'] {
+			if ts := time.parse_rfc3339(ts_val.str()) {
+				if !seen_any_timestamp || ts < sess.started_at {
+					sess.started_at = ts
+				}
+				if !seen_any_timestamp || ts > sess.last_msg_at {
+					sess.last_msg_at = ts
+				}
+				seen_any_timestamp = true
+			}
+		}
+
+		if kind == 'session' {
+			sess.id = (obj['id'] or { json2.Any('') }).str()
+			sess.project_dir = (obj['cwd'] or { json2.Any('') }).str()
+		} else if kind == 'message' {
+			msg_val := obj['message'] or { continue }
+			if msg_val !is map[string]json2.Any {
+				continue
+			}
+			msg := msg_val.as_map()
+			if (msg['role'] or { json2.Any('') }).str() != 'assistant' {
+				continue
+			}
+			if model_val := msg['model'] {
+				if model_val is string && model_val != '' {
+					sess.model = model_val
+				}
+			}
+			if usage_val := msg['usage'] {
+				if usage_val is map[string]json2.Any {
+					accumulate_pi_usage(mut usage, usage_val)
+				}
+			}
+		} else if kind in pi_usage_entries {
+			if usage_val := obj['usage'] {
+				if usage_val is map[string]json2.Any {
+					accumulate_pi_usage(mut usage, usage_val)
+				}
+			}
+		}
+	}
+	if sess.id == '' {
+		return error('no session header found in ${path}')
+	}
+	sess.usage = usage
+	return sess
+}
+
+// accumulate_pi_usage adds one pi usage object (input, output, cacheRead,
+// cacheWrite) onto a running total; pi's own cost and token total fields
+// are left out, vai prices usage itself.
+fn accumulate_pi_usage(mut usage vai.Usage, obj map[string]json2.Any) {
+	if v := obj['input'] {
+		usage.input_tokens += int(v.f64())
+	}
+	if v := obj['output'] {
+		usage.output_tokens += int(v.f64())
+	}
+	if v := obj['cacheWrite'] {
+		usage.cache_write_tokens += int(v.f64())
+	}
+	if v := obj['cacheRead'] {
 		usage.cache_read_tokens += int(v.f64())
 	}
 }

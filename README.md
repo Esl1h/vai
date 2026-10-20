@@ -18,7 +18,7 @@ v install https://github.com/Esl1h/vai
 - **Cost accounting** (`cost.v`): a real, sourced pricing table for Anthropic's current models (Opus 5, Sonnet 5, Haiku 4.5, Claude Fable 5.1), all four token categories including cache write/read, and a `PriceBook` for adding or overriding prices without forking the module.
 - **Retry** (`retry.v`): which HTTP statuses are worth retrying, and exponential backoff with jitter.
 - **SSE framing** (`sse.v`): a provider-agnostic incremental parser (`SseParser.feed(line)`), because a transport reads a stream one line at a time, not as one complete body.
-- **`local`** (`local/`): reads Claude Code's own session transcripts (`~/.claude/projects/**/*.jsonl`) for token usage, model, and timing, read defensively, since the format is undocumented and internal to the CLI.
+- **`local`** (`local/`): reads the session files coding agents already keep on disk for token usage, model, and timing: Claude Code's transcripts (`~/.claude/projects/**/*.jsonl`, subagent transcripts folded into their session), and pi's and omp's (`~/.pi/agent/sessions`, `~/.omp/agent/sessions`, pi's format version 3). Read defensively, since none of these formats is a public contract.
 - **`anthropic`** (`anthropic/`) and **`openai`** (`openai/`): request encoding, response decoding, and stream-event decoding for each provider's actual wire format. Each is tested against realistic fixtures, not live calls.
 - **Transport** (`transport.v`, `transport_http.v`, `transport_curl.v`): the `Transport` interface, `NativeTransport` (`net.http`, non-streaming only), and `CurlTransport`, which shells out to `curl` for both request kinds and is what makes streaming work at all, since `net.http` has none. Handles the partial-line buffering across non-blocking reads itself, since `os.Process` doesn't give you a line-buffered read.
 - **`Provider`** (`anthropic.Provider`, `openai.Provider`): `complete(req) !vai.Response` with retry (rate limiting, a momentary server failure, Anthropic's 529, respecting the server's own `Retry-After` header), and `stream(req) !chan vai.StreamEvent`, where a non-2xx answer or a curl failure (connection refused, a stalled stream) ends the stream with one `.error` event carrying the provider's message. Both tested against a local mock server, `complete()`'s retry path with a fake 429-then-succeed handler, `stream()` end-to-end through a real `curl` subprocess parsing a real SSE body.
@@ -110,6 +110,8 @@ for s in sessions {
 	println('${s.id}: ${s.usage.total_tokens()} tokens, model ${s.model}')
 }
 ```
+
+`local.pi_sessions()` and `local.omp_sessions()` return the same `Session` shape.
 
 ## Development
 

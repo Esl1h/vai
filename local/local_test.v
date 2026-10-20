@@ -99,3 +99,42 @@ fn test_claude_sessions_fold_subagents_into_parent() {
 		assert s.last_msg_at.unix() == time.parse_rfc3339('2026-09-06T01:05:00.000Z')!.unix()
 	})!
 }
+
+// pi_fixture follows pi's session format version 3, as written by pi
+// 1.3.0 and omp 18.12: a header, then one entry per line.
+const pi_fixture = '{"type":"session","version":3,"id":"p1","timestamp":"2026-10-19T14:48:57.842Z","cwd":"/tmp"}
+{"type":"model_change","id":"a","parentId":null,"timestamp":"2026-10-19T14:48:57.918Z","model":"ollama/qwen3.8:27b"}
+{"type":"message","id":"b","parentId":"a","timestamp":"2026-10-19T14:49:00.000Z","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}
+{"type":"message","id":"c","parentId":"b","timestamp":"2026-10-19T14:49:10.000Z","message":{"role":"assistant","content":[],"provider":"ollama","model":"qwen3.8:27b","usage":{"input":2050,"output":301,"cacheRead":10,"cacheWrite":5,"totalTokens":2366,"cost":{"total":0}}}}
+{"type":"compaction","id":"d","parentId":"c","timestamp":"2026-10-19T14:50:00.000Z","summary":"s","usage":{"input":100,"output":20,"cacheRead":0,"cacheWrite":0}}
+{"type":"message","id":"e","parentId":"d","timestamp":"2026-10-19T14:51:00.000Z","message":{"role":"assistant","content":[],"provider":"ollama","model":"llama3.2:1b","usage":{"input":7,"output":3,"cacheRead":0,"cacheWrite":0}}}
+not json
+'
+
+fn test_pi_sessions_from_root_parses_fixture() {
+	root := os.join_path(os.temp_dir(), 'vai_pi_test_${rand_suffix()}')
+	dir := os.join_path(root, '--tmp--')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(dir, '2026-10-19T14-48-57-842Z_p1.jsonl'), pi_fixture)!
+	os.write_file(os.join_path(dir, 'headerless.jsonl'), '{"type":"message"}\n')!
+
+	sessions := pi_sessions_from_root(root)!
+	assert sessions.len == 1
+	s := sessions[0]
+	assert s.id == 'p1'
+	assert s.project_dir == '/tmp'
+	assert s.model == 'llama3.2:1b'
+	assert s.usage.input_tokens == 2050 + 100 + 7
+	assert s.usage.output_tokens == 301 + 20 + 3
+	assert s.usage.cache_read_tokens == 10
+	assert s.usage.cache_write_tokens == 5
+	assert s.last_msg_at.unix() == time.parse_rfc3339('2026-10-19T14:51:00.000Z')!.unix()
+}
+
+fn test_pi_sessions_from_root_missing_dir_is_empty() {
+	sessions := pi_sessions_from_root('/nonexistent/path/for/sure')!
+	assert sessions.len == 0
+}
